@@ -1039,6 +1039,11 @@ enum nl80211_commands {
  *	being a list of supported rates as defined by IEEE 802.11 7.3.2.2 but
  *	without the length restriction (at most %NL80211_MAX_SUPP_RATES).
  *
+ * @NL80211_ATTR_DEVICE_AP_SME: This u32 attribute may be listed for devices
+ *	that have AP support to indicate that they have the AP SME integrated
+ *	with support for the features listed in this attribute, see
+ *	&enum nl80211_ap_sme_features.
+ *
  * @NL80211_ATTR_MAX: highest attribute number currently defined
  * @__NL80211_ATTR_AFTER_LAST: internal use
  */
@@ -1256,6 +1261,8 @@ enum nl80211_attrs {
 
 	NL80211_ATTR_SCHED_SCAN_MATCH,
 	NL80211_ATTR_MAX_MATCH_SETS,
+
+	NL80211_ATTR_DEVICE_AP_SME,
 
 	/* add attributes here, update the policy in nl80211.c */
 
@@ -2483,4 +2490,12 @@ enum nl80211_rekey_data {
 	MAX_NL80211_REKEY_DATA = NUM_NL80211_REKEY_DATA - 1
 };
 
+
+/*
+ * enum nl80211_ap_sme_features - device-integrated AP features
+ * Reserved for future use, no bits are defined in
+ * NL80211_ATTR_DEVICE_AP_SME yet.
+enum nl80211_ap_sme_features {
+};
+ */
 #endif /* __LINUX_NL80211_H */
