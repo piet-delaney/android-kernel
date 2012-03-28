@@ -30,6 +30,7 @@
 #include <mach/powergate.h>
 
 #include <media/tegra_camera.h>
+#include <mach/pinmux.h>
 
 /* Eventually this should handle all clock and reset calls for the isp, vi,
  * vi_sensor, and csi modules, replacing nvrm and nvos completely for camera
@@ -52,6 +53,8 @@ struct tegra_camera_dev {
 	int power_on;
 };
 
+static struct tegra_camera_dev *p_cam_dev;
+
 struct tegra_camera_block {
 	int (*enable) (struct tegra_camera_dev *dev);
 	int (*disable) (struct tegra_camera_dev *dev);
@@ -68,15 +71,19 @@ static int tegra_camera_enable_clk(struct tegra_camera_dev *dev)
 	udelay(2);
 	tegra_periph_reset_deassert(dev->vi_clk);
 
+	tegra_pinmux_set_tristate(TEGRA_PINGROUP_CAM_MCLK, TEGRA_TRI_TRISTATE);
 	clk_enable(dev->isp_clk);
 	tegra_periph_reset_assert(dev->isp_clk);
 	udelay(2);
 	tegra_periph_reset_deassert(dev->isp_clk);
 
+
 	clk_enable(dev->csi_clk);
 	tegra_periph_reset_assert(dev->csi_clk);
 	udelay(2);
 	tegra_periph_reset_deassert(dev->csi_clk);
+	tegra_pinmux_set_tristate(TEGRA_PINGROUP_CAM_MCLK, TEGRA_TRI_NORMAL);
+
 	return 0;
 }
 
@@ -372,6 +379,26 @@ release_exit:
 	return 0;
 }
 
+int tegra_camera_mclk_on_off(int on)
+{
+    if (!p_cam_dev) return -1;
+
+    if (on){
+        printk("camera mclock on\n");
+        clk_set_rate(p_cam_dev->csus_clk, 6000000);
+        clk_set_rate(p_cam_dev->vi_sensor_clk, 24000000);
+        clk_enable(p_cam_dev->vi_sensor_clk);
+        clk_enable(p_cam_dev->csus_clk);
+    }
+    else{
+        clk_disable(p_cam_dev->vi_sensor_clk);
+        clk_disable(p_cam_dev->csus_clk);
+    }
+    printk("-%s\n",__FUNCTION__);
+
+    return 0;
+}
+
 static const struct file_operations tegra_camera_fops = {
 	.owner = THIS_MODULE,
 	.open = tegra_camera_open,
@@ -472,6 +499,8 @@ static int tegra_camera_probe(struct platform_device *pdev)
 	/* dev is set in order to restore in _remove */
 	platform_set_drvdata(pdev, dev);
 
+    p_cam_dev = dev;
+
 	return 0;
 
 emc_clk_get_err:
@@ -519,6 +548,7 @@ static int tegra_camera_suspend(struct platform_device *pdev, pm_message_t state
 		"tegra_camera cannot suspend, "
 		"application is holding on to camera. \n");
 	}
+	tegra_pinmux_set_tristate(TEGRA_PINGROUP_CAM_MCLK, TEGRA_TRI_NORMAL);
 	mutex_unlock(&dev->tegra_camera_lock);
 
 	return ret;
