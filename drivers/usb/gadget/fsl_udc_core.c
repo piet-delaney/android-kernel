@@ -94,7 +94,7 @@ static u8 boost_cpufreq_work_flag;
 #endif
 
 /* Enable or disable the callback for the battery driver. */
-#define BATTERY_CALLBACK_ENABLED 0
+#define BATTERY_CALLBACK_ENABLED 1
 
 struct cable_info {
 	/*
