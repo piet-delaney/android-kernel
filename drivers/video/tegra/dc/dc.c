@@ -82,6 +82,8 @@ static struct fb_videomode tegra_dc_hdmi_fallback_mode = {
 
 static void _tegra_dc_controller_disable(struct tegra_dc *dc);
 
+static struct timeval t_suspend;
+
 module_param_named(no_vsync, no_vsync, int, S_IRUGO | S_IWUSR);
 
 static int use_dynamic_emc = 1;
@@ -2689,6 +2691,15 @@ static bool _tegra_dc_enable(struct tegra_dc *dc)
 			return false;
 		}
 	}
+	if (dc->ndev->id == 0) {
+			struct timeval t_resume;
+			int diff_msec = 0;
+			do_gettimeofday(&t_resume);
+			diff_msec = ((t_resume.tv_sec - t_suspend.tv_sec) * 1000000 +(t_resume.tv_usec - t_suspend.tv_usec)) / 1000;
+			printk("Disp: diff_msec= %d\n", diff_msec);
+			if((diff_msec < 150) && (diff_msec >= 0))
+					msleep(150 - diff_msec);
+	}
 
 	if (!dc->out)
 		return false;
@@ -2800,6 +2811,10 @@ void tegra_dc_blank(struct tegra_dc *dc)
 
 static void _tegra_dc_disable(struct tegra_dc *dc)
 {
+	if (dc->ndev->id == 0) {
+		do_gettimeofday(&t_suspend);
+	}
+
 	_tegra_dc_controller_disable(dc);
 	tegra_dc_io_end(dc);
 }
