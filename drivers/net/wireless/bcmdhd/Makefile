@@ -55,7 +55,7 @@ DHDOFILES = aiutils.o bcmsdh_sdmmc_linux.o dhd_linux.o siutils.o bcmutils.o   \
 obj-$(CONFIG_BCMDHD) += bcmdhd.o
 bcmdhd-objs += $(DHDOFILES)
 
-ifeq ($(CONFIG_BCMDHD_WEXT),y)
+ifneq ($(CONFIG_WIRELESS_EXT),)
 bcmdhd-objs += wl_iw.o
 DHDCFLAGS += -DSOFTAP -DCSCAN
 endif
