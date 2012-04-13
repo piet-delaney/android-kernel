@@ -426,7 +426,7 @@ static int __devinit smb349_probe(struct i2c_client *client,
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	struct smb349_charger_platform_data *pdata;
-	int ret;
+	int ret, irq_num;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE))
 		return -EIO;
@@ -438,6 +438,11 @@ static int __devinit smb349_probe(struct i2c_client *client,
 	charger->client = client;
 	charger->dev = &client->dev;
 	pdata = client->dev.platform_data;
+	if(!pdata) {
+		ret = -ENXIO;
+		goto error;
+	}
+
 	i2c_set_clientdata(client, charger);
 
 	/* Check battery presence */

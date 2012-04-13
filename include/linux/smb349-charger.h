@@ -28,6 +28,7 @@
 #include <linux/regulator/driver.h>
 #include <linux/usb/otg.h>
 
+
 struct smb349_charger_platform_data {
 	int regulator_id;
 	int max_charge_volt_mV;
