@@ -333,6 +333,21 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	unsigned int type = button->type ?: EV_KEY;
 	int state = (gpio_get_value_cansleep(button->gpio) ? 1 : 0) ^ button->active_low;
 
+	switch (button->code) {
+	case KEY_POWER:
+		pr_info("gpio_keys: %s KEY_POWER\n", state ? "Pressed" : "Released");
+		break;
+	case KEY_VOLUMEUP:
+		pr_info("gpio_keys: %s KEY_VOLUMEUP\n", state ? "Pressed" : "Released");
+		break;
+	case KEY_VOLUMEDOWN:
+		pr_info("gpio_keys: %s KEY_VOLUMEDOWN\n", state ? "Pressed" : "Released");
+		break;
+	default:
+		pr_info("gpio_keys: %s %u\n", state ? "Pressed" : "Released", button->code);
+		break;
+	}
+
 	if (type == EV_ABS) {
 		if (state)
 			input_event(input, type, button->code, button->value);
