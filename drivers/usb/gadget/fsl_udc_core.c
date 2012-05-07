@@ -147,7 +147,7 @@ static int fsl_charging_current = 0;
 static struct delayed_work smb347_hc_mode_work;
 
 extern int smb347_hc_mode_callback(bool enable, int cur);
-
+extern void fsl_wake_lock_timeout(void);
 
 /* Export the function "unsigned int get_usb_cable_status(void)" for others to query the USB cable status. */
 unsigned int get_usb_cable_status(void)
@@ -3461,6 +3461,7 @@ static int fsl_udc_resume(struct platform_device *pdev)
 			/* if there is no VBUS then power down the clocks and return */
 			fsl_udc_clk_suspend(false);
 			if(s_cable_info.udc_vbus_active == 0 && s_cable_info.is_active == 1) {
+				fsl_wake_lock_timeout();
 				mutex_lock(&s_cable_info.cable_info_mutex);
 				s_cable_info.udc_vbus_active = 1;
 				s_cable_info.is_active = 0;
@@ -3487,6 +3488,7 @@ static int fsl_udc_resume(struct platform_device *pdev)
 		fsl_udc_restart(udc_controller);
 
 	if((s_cable_info.udc_vbus_active == 1 && s_cable_info.is_active == 0) || (s_cable_info.udc_vbus_active == 0 && s_cable_info.is_active == 0)) {
+		fsl_wake_lock_timeout();
 		mutex_lock(&s_cable_info.cable_info_mutex);
 		s_cable_info.udc_vbus_active = 0;
 		s_cable_info.is_active = 1;
