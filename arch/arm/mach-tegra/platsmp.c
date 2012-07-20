@@ -232,7 +232,9 @@ int boot_secondary(unsigned int cpu, struct task_struct *idle)
 	   is now driving reset. */
 	flowctrl_writel(0, FLOW_CTRL_HALT_CPU(cpu));
 
+	preempt_disable();
 	status = power_up_cpu(cpu);
+	preempt_enable();
 	if (status)
 		goto done;
 
