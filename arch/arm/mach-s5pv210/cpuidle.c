@@ -45,6 +45,8 @@ static bool earlysuspend_active __read_mostly = false;
 static bool idle2_cpufreq_lock = false;
 static bool needs_topon = false;
 static bool topon_cancel_pending;
+static bool topoff_enabled __read_mostly = true;
+static void idle2_cpufreq_lock_toggle(bool flag);
 #endif /* CONFIG_S5P_IDLE2 */
 
 
@@ -148,6 +150,10 @@ void earlysuspend_active_fn(bool flag)
 		earlysuspend_active = true;
 	else
 		earlysuspend_active = false;
+	if (idle2_cpufreq_lock) {
+		printk("%s: idle2_cpufreq_lock_toggle(false)\n", __func__);
+		idle2_cpufreq_lock_toggle(false);
+	}
 	printk(KERN_DEBUG "earlysuspend_active: %d\n", earlysuspend_active);
 }
 
@@ -178,12 +184,44 @@ static void needs_topon_fn(bool flag)
 	printk(KERN_DEBUG "needs_topon: %d\n", needs_topon);
 }
 
+static void cpufreq_lock_toggle_fn(bool flag)
+{
+       int ret;
+       if (flag) {
+               if (idle2_cpufreq_lock) {
+                       printk(KERN_WARNING "%s: CPUfreq lock already held, not locking!\n", __func__);
+                       return;
+               }
+               ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+                               DISABLE_FURTHER_CPUFREQ);
+               if (ret < 0)
+                       printk(KERN_WARNING "%s: Error %d locking CPUfreq\n", __func__, ret);
+               else {
+                       printk(KERN_INFO "%s: CPUfreq locked to 800MHz\n", __func__);
+                       idle2_cpufreq_lock = true;
+               }
+       } else {
+               if (!idle2_cpufreq_lock) {
+                       printk(KERN_WARNING "%s: No CPUfreq lock held, not unlocking!\n", __func__);
+                       return;
+               }
+               ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+                               ENABLE_FURTHER_CPUFREQ);
+               if (ret < 0)
+                       printk(KERN_WARNING "%s: Error %d unlocking CPUfreq\n", __func__, ret);
+               else {
+                       printk(KERN_INFO "%s: CPUfreq unlocked from 800MHz\n", __func__);
+                       idle2_cpufreq_lock = false;
+               }
+       }
+}
+
 inline static int s5p_enter_idle_deep_topoff(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
 	if (unlikely(idle2_disabled || idle2_disabled_by_suspend))
 		return s5p_enter_idle_normal(device, state);
-	if (unlikely(needs_topon)) {
+	if (unlikely(needs_topon || !topoff_enabled)) {
 		return s5p_enter_idle_idle2_topon(device, state);
 		printk(KERN_WARNING "%s: we shouldn't be here\n", __func__);
 	}
@@ -197,7 +235,7 @@ inline static int s5p_enter_idle_deep_topon(struct cpuidle_device *device,
 {
 	if (unlikely(idle2_disabled || idle2_disabled_by_suspend))
 		return s5p_enter_idle_normal(device, state);
-	if (unlikely(!needs_topon)) {
+	if (unlikely(!needs_topon && topoff_enabled)) {
 		return s5p_enter_idle_idle2_topoff(device, state);
 		printk(KERN_WARNING "%s: we shouldn't be here\n", __func__);
 	}
@@ -213,6 +251,8 @@ struct work_struct idle2_external_active_work;
 struct delayed_work idle2_external_inactive_work;
 struct work_struct idle2_enable_topon_work;
 struct delayed_work idle2_cancel_topon_work;
+struct work_struct idle2_cpufreq_take_lock_work;
+struct work_struct idle2_cpufreq_release_lock_work;
 
 static void idle2_enable_work_fn(struct work_struct *work)
 {
@@ -245,6 +285,18 @@ static void idle2_enable_topon_work_fn(struct work_struct *work)
 static void idle2_cancel_topon_work_fn(struct work_struct *work)
 {
 	needs_topon_fn(false);
+}
+
+static void idle2_cpufreq_take_lock_work_fn(struct work_struct *work)
+{
+       cpufreq_lock_toggle_fn(true);
+       idle2_cpufreq_lock = true;
+}
+
+static void idle2_cpufreq_release_lock_work_fn(struct work_struct *work)
+{
+       cpufreq_lock_toggle_fn(false);
+       idle2_cpufreq_lock = false;
 }
 
 void idle2_enable(unsigned long delay)
@@ -298,6 +350,20 @@ void idle2_cancel_topon(unsigned long delay)
 	}
 }
 
+static void idle2_cpufreq_lock_toggle(bool flag)
+{
+	if (work_initialised && flag) {
+		if (idle2_cpufreq_lock)
+			return;
+		queue_work(idle2_wq, &idle2_cpufreq_take_lock_work);
+	}
+	else if (work_initialised && !flag) {
+		if (!idle2_cpufreq_lock)
+			return;
+		queue_work(idle2_wq, &idle2_cpufreq_release_lock_work);
+	}
+}
+
 static int idle2_disabled_set(const char *arg, const struct kernel_param *kp)
 {
 	int ret;
@@ -316,29 +382,42 @@ static struct kernel_param_ops idle2_disabled_ops = {
 };
 module_param_cb(idle2_disabled, &idle2_disabled_ops, &idle2_disabled, 0644);
 
+static int topoff_enabled_set(const char *arg, const struct kernel_param *kp)
+{
+	int ret;
+	printk(KERN_INFO "%s: %s\n", __func__, arg);
+	return ret = param_set_bool(arg, kp);
+}
+
+static int topoff_enabled_get(char *buffer, const struct kernel_param *kp)
+{
+	return param_get_bool(buffer, kp);
+}
+
+static struct kernel_param_ops topoff_enabled_ops = {
+	.set = topoff_enabled_set,
+	.get = topoff_enabled_get,
+};
+module_param_cb(topoff_enabled, &topoff_enabled_ops, &topoff_enabled, 0644);
+
 static int s5p_idle_prepare(struct cpuidle_device *device)
 {
 	if (!idle2_disabled && !external_active && idle2_requested && earlysuspend_active) {
-		if (unlikely(needs_topon)) {
+		if (unlikely(needs_topon || !topoff_enabled)) {
 			device->states[2].flags &= ~CPUIDLE_FLAG_IGNORE;
 			device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		} else {
 			device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
 			device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
 		}
-		if (unlikely(!idle2_cpufreq_lock)) {
-			idle2_set_cpufreq_lock(true);
-			idle2_cpufreq_lock = true;
-		}
+		if (unlikely(!idle2_cpufreq_lock))
+			idle2_cpufreq_lock_toggle(true);
 	} else {
 		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
-		if (unlikely(idle2_cpufreq_lock)) {
-			idle2_set_cpufreq_lock(false);
-			idle2_cpufreq_lock = false;
-		}
+		if (unlikely(idle2_cpufreq_lock))
+			idle2_cpufreq_lock_toggle(false);
 	}
-
 	return 0;
 }
 
@@ -376,6 +455,8 @@ static int s5p_init_cpuidle(void)
 	INIT_DELAYED_WORK(&idle2_external_inactive_work, idle2_external_inactive_work_fn);
 	INIT_WORK(&idle2_enable_topon_work, idle2_enable_topon_work_fn);
 	INIT_DELAYED_WORK(&idle2_cancel_topon_work, idle2_cancel_topon_work_fn);
+	INIT_WORK(&idle2_cpufreq_take_lock_work, idle2_cpufreq_take_lock_work_fn);
+	INIT_WORK(&idle2_cpufreq_release_lock_work, idle2_cpufreq_release_lock_work_fn);
 	work_initialised = true;
 #endif /* CONFIG_S5P_IDLE2 */
 
@@ -433,7 +514,7 @@ static int s5p_init_cpuidle(void)
 		BUG();
 		return -ENOMEM;
 	}
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.210 by <willtisdale@gmail.com>\n");
+	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.211 by <willtisdale@gmail.com>\n");
 
 	register_pm_notifier(&idle2_pm_notifier);
 
