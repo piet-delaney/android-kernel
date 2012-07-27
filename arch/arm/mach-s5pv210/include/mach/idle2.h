@@ -195,6 +195,34 @@ inline static bool enter_idle2_check(void)
 
 }
 
+inline static void idle2_set_cpufreq_lock(bool flag)
+{
+	int ret;
+	if (flag) {
+		preempt_enable();
+		local_irq_enable();
+		ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+				DISABLE_FURTHER_CPUFREQ);
+		if (ret < 0)
+			printk(KERN_WARNING "%s: Error %d locking CPUfreq\n", __func__, ret);
+		else
+			printk(KERN_INFO "%s: CPUfreq locked to 800MHz\n", __func__);
+		local_irq_disable();
+		preempt_disable();
+	} else {
+		preempt_enable();
+		local_irq_enable();
+		ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+				ENABLE_FURTHER_CPUFREQ);
+		if (ret < 0)
+			printk(KERN_WARNING "%s: Error %d unlocking CPUfreq\n", __func__, ret);
+		else
+			printk(KERN_INFO "%s: CPUfreq unlocked from 800MHz\n", __func__);
+		local_irq_disable();
+		preempt_disable();
+	}
+}
+
 /*
  * Before entering, idle2 mode GPIO Power Down Mode
  * Configuration register has to be set with same state

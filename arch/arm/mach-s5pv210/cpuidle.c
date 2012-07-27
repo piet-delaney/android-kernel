@@ -42,11 +42,10 @@ static bool external_active __read_mostly;
 static bool inactive_pending;
 static bool enable_pending;
 static bool earlysuspend_active __read_mostly = false;
-static bool idle2_cpufreq_lock = false;
-static bool needs_topon = false;
+static bool idle2_cpufreq_lock __read_mostly = false;
+static bool needs_topon __read_mostly = false;
 static bool topon_cancel_pending;
 static bool topoff_enabled __read_mostly = true;
-static void idle2_cpufreq_lock_toggle(bool flag);
 #endif /* CONFIG_S5P_IDLE2 */
 
 
@@ -151,8 +150,9 @@ void earlysuspend_active_fn(bool flag)
 	else
 		earlysuspend_active = false;
 	if (idle2_cpufreq_lock) {
-		printk("%s: idle2_cpufreq_lock_toggle(false)\n", __func__);
-		idle2_cpufreq_lock_toggle(false);
+		printk("%s: idle2_set_cpufreq_lock(false)\n", __func__);
+		idle2_set_cpufreq_lock(false);
+		idle2_cpufreq_lock = false;
 	}
 	printk(KERN_DEBUG "earlysuspend_active: %d\n", earlysuspend_active);
 }
@@ -182,38 +182,6 @@ static void needs_topon_fn(bool flag)
 	else
 		needs_topon = false;
 	printk(KERN_DEBUG "needs_topon: %d\n", needs_topon);
-}
-
-static void cpufreq_lock_toggle_fn(bool flag)
-{
-       int ret;
-       if (flag) {
-               if (idle2_cpufreq_lock) {
-                       printk(KERN_WARNING "%s: CPUfreq lock already held, not locking!\n", __func__);
-                       return;
-               }
-               ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
-                               DISABLE_FURTHER_CPUFREQ);
-               if (ret < 0)
-                       printk(KERN_WARNING "%s: Error %d locking CPUfreq\n", __func__, ret);
-               else {
-                       printk(KERN_INFO "%s: CPUfreq locked to 800MHz\n", __func__);
-                       idle2_cpufreq_lock = true;
-               }
-       } else {
-               if (!idle2_cpufreq_lock) {
-                       printk(KERN_WARNING "%s: No CPUfreq lock held, not unlocking!\n", __func__);
-                       return;
-               }
-               ret = cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
-                               ENABLE_FURTHER_CPUFREQ);
-               if (ret < 0)
-                       printk(KERN_WARNING "%s: Error %d unlocking CPUfreq\n", __func__, ret);
-               else {
-                       printk(KERN_INFO "%s: CPUfreq unlocked from 800MHz\n", __func__);
-                       idle2_cpufreq_lock = false;
-               }
-       }
 }
 
 inline static int s5p_enter_idle_deep_topoff(struct cpuidle_device *device,
@@ -251,8 +219,6 @@ struct work_struct idle2_external_active_work;
 struct delayed_work idle2_external_inactive_work;
 struct work_struct idle2_enable_topon_work;
 struct delayed_work idle2_cancel_topon_work;
-struct work_struct idle2_cpufreq_take_lock_work;
-struct work_struct idle2_cpufreq_release_lock_work;
 
 static void idle2_enable_work_fn(struct work_struct *work)
 {
@@ -285,18 +251,6 @@ static void idle2_enable_topon_work_fn(struct work_struct *work)
 static void idle2_cancel_topon_work_fn(struct work_struct *work)
 {
 	needs_topon_fn(false);
-}
-
-static void idle2_cpufreq_take_lock_work_fn(struct work_struct *work)
-{
-       cpufreq_lock_toggle_fn(true);
-       idle2_cpufreq_lock = true;
-}
-
-static void idle2_cpufreq_release_lock_work_fn(struct work_struct *work)
-{
-       cpufreq_lock_toggle_fn(false);
-       idle2_cpufreq_lock = false;
 }
 
 void idle2_enable(unsigned long delay)
@@ -350,20 +304,6 @@ void idle2_cancel_topon(unsigned long delay)
 	}
 }
 
-static void idle2_cpufreq_lock_toggle(bool flag)
-{
-	if (work_initialised && flag) {
-		if (idle2_cpufreq_lock)
-			return;
-		queue_work(idle2_wq, &idle2_cpufreq_take_lock_work);
-	}
-	else if (work_initialised && !flag) {
-		if (!idle2_cpufreq_lock)
-			return;
-		queue_work(idle2_wq, &idle2_cpufreq_release_lock_work);
-	}
-}
-
 static int idle2_disabled_set(const char *arg, const struct kernel_param *kp)
 {
 	int ret;
@@ -410,13 +350,17 @@ static int s5p_idle_prepare(struct cpuidle_device *device)
 			device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
 			device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
 		}
-		if (unlikely(!idle2_cpufreq_lock))
-			idle2_cpufreq_lock_toggle(true);
+		if (unlikely(!idle2_cpufreq_lock)) {
+			idle2_set_cpufreq_lock(true);
+			idle2_cpufreq_lock = true;
+		}
 	} else {
 		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
-		if (unlikely(idle2_cpufreq_lock))
-			idle2_cpufreq_lock_toggle(false);
+		if (unlikely(idle2_cpufreq_lock)) {
+			idle2_set_cpufreq_lock(false);
+			idle2_cpufreq_lock = false;
+		}
 	}
 	return 0;
 }
@@ -455,8 +399,6 @@ static int s5p_init_cpuidle(void)
 	INIT_DELAYED_WORK(&idle2_external_inactive_work, idle2_external_inactive_work_fn);
 	INIT_WORK(&idle2_enable_topon_work, idle2_enable_topon_work_fn);
 	INIT_DELAYED_WORK(&idle2_cancel_topon_work, idle2_cancel_topon_work_fn);
-	INIT_WORK(&idle2_cpufreq_take_lock_work, idle2_cpufreq_take_lock_work_fn);
-	INIT_WORK(&idle2_cpufreq_release_lock_work, idle2_cpufreq_release_lock_work_fn);
 	work_initialised = true;
 #endif /* CONFIG_S5P_IDLE2 */
 
@@ -514,7 +456,7 @@ static int s5p_init_cpuidle(void)
 		BUG();
 		return -ENOMEM;
 	}
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.211 by <willtisdale@gmail.com>\n");
+	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.212 by <willtisdale@gmail.com>\n");
 
 	register_pm_notifier(&idle2_pm_notifier);
 
