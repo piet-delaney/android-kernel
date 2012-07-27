@@ -37,7 +37,7 @@
 static bool idle2_disabled __read_mostly = false;
 static bool idle2_disabled_by_suspend __read_mostly = false;
 static bool work_initialised __read_mostly = false;
-static bool idle2_requested __read_mostly = false;
+static bool idle2_requested __read_mostly = true;
 static bool external_active __read_mostly;
 static bool inactive_pending;
 static bool enable_pending;

@@ -766,7 +766,7 @@ static int s5p_i2s_wr_startup(struct snd_pcm_substream *substream,
 		 * is enabled. This stops audio notifications from switching
 		 * the idle mode.
 		 */
-		idle2_enable(30 * HZ);
+//		idle2_enable(30 * HZ);
 #endif
 		pr_debug("Inside..%s..for playback stream\n" , __func__);
 		tx_clk_enabled = 1;
@@ -805,7 +805,7 @@ static void s5p_i2s_wr_shutdown(struct snd_pcm_substream *substream,
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 #ifdef CONFIG_S5P_IDLE2
-		idle2_disable();
+//		idle2_disable();
 #endif
 		pr_debug("Inside %s for playback stream\n" , __func__);
 		tx_clk_enabled = 0;
