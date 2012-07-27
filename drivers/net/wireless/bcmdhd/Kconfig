@@ -52,3 +52,11 @@ config DHD_ENABLE_P2P
 	default n
 	---help---
 	  Use Enable Wifi Direct
+
+config DHD_DISABLE_PM_MAX
+	bool "Disable PM_MAX power state state"
+	depends on BCMDHD
+	default y
+	---help---
+	  Disable PM_MAX state and use PM_FAST instead for
+	  fast wifi whilst device is in early suspend.
