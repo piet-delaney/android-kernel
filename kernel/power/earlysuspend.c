@@ -87,7 +87,9 @@ static void early_suspend(struct work_struct *work)
 	mutex_lock(&early_suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPEND_REQUESTED) {
+#ifdef CONFIG_S5P_IDLE2
 		earlysuspend_active_fn(true);
+#endif
 		state |= SUSPENDED;
 	}
 	else
@@ -133,7 +135,9 @@ static void late_resume(struct work_struct *work)
 	mutex_lock(&early_suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPENDED) {
+#ifdef CONFIG_S5P_IDLE2
 		earlysuspend_active_fn(false);
+#endif
 		state &= ~SUSPENDED;
 	}
 	else
