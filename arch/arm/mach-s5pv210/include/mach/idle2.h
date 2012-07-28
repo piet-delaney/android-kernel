@@ -19,7 +19,7 @@
 #include <linux/cpufreq.h>
 #include <linux/interrupt.h>
 
-#define MAX_CHK_DEV			0xf
+#define MAX_CHK_DEV			5
 #define IDLE2_FREQ			(800 * 1000) /* Use 800MHz when entering idle2 */
 #define DISABLE_FURTHER_CPUFREQ 	0x10
 #define ENABLE_FURTHER_CPUFREQ 		0x20
@@ -289,8 +289,7 @@ inline static void s5p_enter_idle2(void)
 	__raw_writel(tmp, S5P_WAKEUP_MASK);
 
 	/* Clear wakeup status register */
-	tmp = __raw_readl(S5P_WAKEUP_STAT);
-	__raw_writel(tmp, S5P_WAKEUP_STAT);
+	__raw_writel(0x0, S5P_WAKEUP_STAT);
 
 	/* IDLE config register set */
 	/* TOP Memory retention off */
@@ -389,8 +388,7 @@ inline static void s5p_enter_idle2_topon(void)
 	__raw_writel(tmp, S5P_WAKEUP_MASK);
 
 	/* Clear wakeup status register */
-	tmp = __raw_readl(S5P_WAKEUP_STAT);
-	__raw_writel(tmp, S5P_WAKEUP_STAT);
+	__raw_writel(0x0, S5P_WAKEUP_STAT);
 
 	/* IDLE config register set */
 	/* TOP Memory retention on */
