@@ -424,6 +424,11 @@ static irqreturn_t s3c24xx_i2c_irq(int irqno, void *dev_id)
 	unsigned long status;
 	unsigned long tmp;
 
+	if (unlikely(i2c == NULL)) {
+		printk(KERN_ERR "%s: i2c == NULL bailing!\n", __func__);
+		return -EINVAL;
+	}
+
 	status = readl(i2c->regs + S3C2410_IICSTAT);
 
 	if (status & S3C2410_IICSTAT_ARBITR) {
