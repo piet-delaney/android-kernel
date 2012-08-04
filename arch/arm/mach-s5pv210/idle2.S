@@ -17,11 +17,48 @@
 
 
 ENTRY(s5p_idle2)
+	stmfd	sp!, {lr}
+	/*
+	 * Flush pipeline, execute barrier instructions
+	 * then call wfi.
+	 */
+	isb
 	dmb
 	dsb
 	wfi
 
-	b	.
+	/*
+	 * 26 nops as per Cortex-A8 pipeline.
+	 */
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	ldmfd	sp!, {pc}
+ENDPROC(s5p_idle2)
 
 
 	.text
