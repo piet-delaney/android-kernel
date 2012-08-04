@@ -240,7 +240,7 @@ retry:
 	s5p_idle2();
 	if (!s5p_vic_interrupt_pending()) {
 #ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk(KERN_INFO "%s: !s5p_vic_interrupt_pending()\n", __func__, ret);
+		printk(KERN_INFO "%s: !s5p_vic_interrupt_pending()\n", __func__);
 #endif
 		goto retry;
 	}
