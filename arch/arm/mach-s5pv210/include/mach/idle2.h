@@ -238,8 +238,12 @@ inline static void s5p_wfi_until_interrupt(void)
 {
 retry:
 	s5p_idle2();
-	if (!s5p_vic_interrupt_pending())
+	if (!s5p_vic_interrupt_pending()) {
+#ifdef CONFIG_S5P_IDLE2_DEBUG
+		printk(KERN_INFO "%s: !s5p_vic_interrupt_pending()\n", __func__, ret);
+#endif
 		goto retry;
+	}
 }
 
 /*
@@ -344,8 +348,6 @@ inline static void s5p_enter_idle2(void)
 		printk(KERN_INFO "*** Entering IDLE2 TOP OFF mode\n");
 #endif
 		flush_cache_all();
-retry:
-		s5p_idle2();
 		s5p_wfi_until_interrupt();
 	}
 skipped_idle2:
