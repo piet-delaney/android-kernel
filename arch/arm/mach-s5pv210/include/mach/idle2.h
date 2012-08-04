@@ -325,7 +325,7 @@ inline static void s5p_enter_idle2(void)
 		printk(KERN_INFO "*** Entering IDLE2 TOP OFF mode\n");
 #endif
 		flush_cache_all();
-		cpu_do_idle();
+		s5p_idle2();
 	}
 skipped_idle2:
 	__raw_writel(save_eint_mask, S5P_EINT_WAKEUP_MASK);
@@ -424,7 +424,7 @@ inline static void s5p_enter_idle2_topon(void)
 		printk(KERN_INFO "*** Entering IDLE2 TOP ON mode\n");
 #endif
 		flush_cache_all();
-		cpu_do_idle();
+		s5p_idle2();
 	}
 skipped_idle2:
 	__raw_writel(save_eint_mask, S5P_EINT_WAKEUP_MASK);
