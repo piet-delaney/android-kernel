@@ -454,15 +454,16 @@ static int tegra_powergate_set(int id, bool new_state)
 		contention_timeout--;
 	} while ((status != new_state) && (contention_timeout > 0));
 
-	spin_unlock_irqrestore(&tegra_powergate_lock, flags);
-
 	if (status != new_state) {
 		WARN(1, "Could not set powergate %d to %d", id, new_state);
+		spin_unlock_irqrestore(&tegra_powergate_lock, flags);
 		return -EBUSY;
 	}
 
 	trace_power_domain_target(powergate_partition_info[id].name, new_state,
 			smp_processor_id());
+
+	spin_unlock_irqrestore(&tegra_powergate_lock, flags);
 
 	return 0;
 }
