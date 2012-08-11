@@ -62,7 +62,10 @@
 #define BATT_STS_FC			0x0200
 
 /* Debug Message */
-#define BAT_NOTICE(format, arg...)	\
+
+#define BAT_NOTICE(...)
+
+//#define BAT_NOTICE(format, arg...)	\
 	printk(KERN_NOTICE "%s " format , __FUNCTION__ , ## arg)
 
 #define BAT_ERR(format, arg...)		\
@@ -481,6 +484,8 @@ static int bq27541_get_psp(int reg_offset, enum power_supply_property psp,
 	if (psp == POWER_SUPPLY_PROP_VOLTAGE_NOW) {
 		val->intval = bq27541_device->bat_vol = rt_value;
 		BAT_NOTICE("voltage_now= %u mV\n", val->intval);
+		/* Convert to microvolts */
+		val->intval = val->intval * 1000;
 	}
 	if (psp == POWER_SUPPLY_PROP_STATUS) {
 		ret = bq27541_device->bat_status = rt_value;
