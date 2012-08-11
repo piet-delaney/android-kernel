@@ -642,6 +642,7 @@ static int rt5640_readable_register(
 	}
 }
 
+#if 0
 int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 {
 	int jack_type;
@@ -688,6 +689,7 @@ int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 	return jack_type;
 }
 EXPORT_SYMBOL(rt5640_headset_detect);
+#endif
 
 /**
  * rt5640_conn_mixer_path - connect mixer widget path.

@@ -1530,17 +1530,6 @@ static int fsl_wakeup(struct usb_gadget *gadget)
 }
 #endif
 
-static int can_pullup(struct fsl_udc *udc)
-{
-	return udc->driver && udc->softconnect && udc->vbus_active;
-}
-
-void detect_cable_status(void)
-{
-	schedule_delayed_work(&s_cable_info.cable_detection_work, HZ);
-}
-EXPORT_SYMBOL(detect_cable_status);
-
 static int fsl_set_selfpowered(struct usb_gadget * gadget, int is_on)
 {
 	struct fsl_udc *udc;
@@ -1617,10 +1606,6 @@ static int fsl_vbus_session(struct usb_gadget *gadget, int is_active)
 			schedule_delayed_work(&s_cable_info.cable_detection_work, HZ);
 		}
 
-#ifndef CONFIG_USB_G_ANDROID
-		return 0;
-#endif
-	}
 	return 0;
 }
 

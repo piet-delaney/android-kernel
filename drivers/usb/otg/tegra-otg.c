@@ -310,7 +310,6 @@ static irqreturn_t tegra_otg_irq(int irq, void *data)
 			otg_writel(tegra, val, USB_PHY_WAKEUP);
 
 			tegra->int_status = val;
-			tegra->detect_vbus = false;
 			schedule_work(&tegra->work);
 		}
 	}
