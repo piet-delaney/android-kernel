@@ -614,7 +614,7 @@ static struct tegra_suspend_platform_data grouper_suspend_data = {
 	.core_off_timer = 0,
 	.corereq_high	= true,
 	.sysclkreq_high	= true,
-	.cpu_lp2_min_residency = 2000,
+	.cpu_lp2_min_residency = 9000,
 	.board_suspend = grouper_board_suspend,
 	.board_resume = grouper_board_resume,
 };
