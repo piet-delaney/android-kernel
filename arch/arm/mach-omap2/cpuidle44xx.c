@@ -38,15 +38,13 @@
 /* C1 is a single-cpu C-state, it can be entered by each cpu independently */
 /* C1 - CPUx WFI + MPU ON + CORE ON */
 #define OMAP4_STATE_C1		0
-/* C2 through C4 are shared C-states, both CPUs must agree to enter */
-/* C2 - CPU0 INA + CPU1 INA + MPU INA + CORE INA */
+/* C2 and C3 are shared C-states, both CPUs must agree to enter */
+/* C2 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE CSWR */
 #define OMAP4_STATE_C2		1
-/* C3 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE CSWR */
+/* C3 - CPU0 OFF + CPU1 OFF + MPU OSWR + CORE OSWR */
 #define OMAP4_STATE_C3		2
-/* C4 - CPU0 OFF + CPU1 OFF + MPU OSWR + CORE OSWR */
-#define OMAP4_STATE_C4		3
 
-#define OMAP4_MAX_STATES	4
+#define OMAP4_MAX_STATES	3
 
 static bool disallow_smp_idle;
 module_param(disallow_smp_idle, bool, S_IRUGO | S_IWUSR);
@@ -71,12 +69,12 @@ MODULE_PARM_DESC(keep_mpu_on,
 static int max_state;
 module_param(max_state, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(max_state,
-	"Select deepest power state allowed (0=any, 1=WFI, 2=INA, 3=CSWR, 4=OSWR)");
+	"Select deepest power state allowed (0=any, 1=WFI, 2=CSWR, 3=OSWR)");
 
 static int only_state;
 module_param(only_state, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(only_state,
-	"Select only power state allowed (0=any, 1=WFI, 2=INA, 3=CSWR, 4=OSWR)");
+	"Select only power state allowed (0=any, 1=WFI, 2=CSWR, 3=OSWR)");
 
 static const int omap4_poke_interrupt[2] = {
 	OMAP44XX_IRQ_CPUIDLE_POKE0,
@@ -102,27 +100,13 @@ static int omap4_idle_ready_count;
 static DEFINE_SPINLOCK(omap4_idle_lock);
 static struct clockdomain *cpu1_cd;
 
-/*
- * Raw measured exit latency numbers (us):
- * state	average		max
- * C2		383		1068
- * C3		641		1190
- * C4		769		1323
- */
-
 static struct cpuidle_params cpuidle_params_table[] = {
 	/* C1 - CPUx WFI + MPU ON  + CORE ON */
 	{.exit_latency = 2 + 2,	.target_residency = 5, .valid = 1},
-	/* C2 - CPU0 INA + CPU1 INA + MPU INA  + CORE INA */
-	{.exit_latency = 1100, .target_residency = 1100, .valid = 1},
-	/* C3 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE CSWR */
-	{.exit_latency = 1200, .target_residency = 1200, .valid = 1},
-#ifdef CONFIG_OMAP_ALLOW_OSWR
-	/* C4 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE OSWR */
-	{.exit_latency = 1500, .target_residency = 1500, .valid = 1},
-#else
-	{.exit_latency = 1500, .target_residency = 1500, .valid = 0},
-#endif
+	/* C2 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE CSWR */
+	{.exit_latency = 328 + 440, .target_residency = 960, .valid = 1},
+	/* C3 - CPU0 OFF + CPU1 OFF + MPU OSWR + CORE OSWR */
+	{.exit_latency = 460 + 518, .target_residency = 1100, .valid = 1},
 };
 
 static void omap4_update_actual_state(struct cpuidle_device *dev,
@@ -619,7 +603,7 @@ void omap4_init_power_states(void)
 	omap4_power_states[OMAP4_STATE_C1].desc = "CPU WFI";
 
 	/*
-	 * C2 - CPU0 INA + CPU1 OFF + MPU INA + CORE INA
+	 * C2 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE CSWR
 	 */
 	omap4_power_states[OMAP4_STATE_C2].valid =
 			cpuidle_params_table[OMAP4_STATE_C2].valid;
@@ -628,14 +612,14 @@ void omap4_init_power_states(void)
 			cpuidle_params_table[OMAP4_STATE_C2].exit_latency;
 	omap4_power_states[OMAP4_STATE_C2].target_residency =
 			cpuidle_params_table[OMAP4_STATE_C2].target_residency;
-	omap4_power_states[OMAP4_STATE_C2].mpu_state = PWRDM_POWER_INACTIVE;
+	omap4_power_states[OMAP4_STATE_C2].mpu_state = PWRDM_POWER_RET;
 	omap4_power_states[OMAP4_STATE_C2].mpu_logic_state = PWRDM_POWER_RET;
-	omap4_power_states[OMAP4_STATE_C2].core_state = PWRDM_POWER_INACTIVE;
+	omap4_power_states[OMAP4_STATE_C2].core_state = PWRDM_POWER_RET;
 	omap4_power_states[OMAP4_STATE_C2].core_logic_state = PWRDM_POWER_RET;
-	omap4_power_states[OMAP4_STATE_C2].desc = "CPUs OFF, MPU + CORE INA";
+	omap4_power_states[OMAP4_STATE_C2].desc = "CPUs OFF, MPU + CORE CSWR";
 
 	/*
-	 * C3 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE CSWR
+	 * C3 - CPU0 OFF + CPU1 OFF + MPU OSWR + CORE OSWR
 	 */
 	omap4_power_states[OMAP4_STATE_C3].valid =
 			cpuidle_params_table[OMAP4_STATE_C3].valid;
@@ -645,26 +629,10 @@ void omap4_init_power_states(void)
 	omap4_power_states[OMAP4_STATE_C3].target_residency =
 			cpuidle_params_table[OMAP4_STATE_C3].target_residency;
 	omap4_power_states[OMAP4_STATE_C3].mpu_state = PWRDM_POWER_RET;
-	omap4_power_states[OMAP4_STATE_C3].mpu_logic_state = PWRDM_POWER_RET;
+	omap4_power_states[OMAP4_STATE_C3].mpu_logic_state = PWRDM_POWER_OFF;
 	omap4_power_states[OMAP4_STATE_C3].core_state = PWRDM_POWER_RET;
-	omap4_power_states[OMAP4_STATE_C3].core_logic_state = PWRDM_POWER_RET;
-	omap4_power_states[OMAP4_STATE_C3].desc = "CPUs OFF, MPU + CORE CSWR";
-
-	/*
-	 * C4 - CPU0 OFF + CPU1 OFF + MPU OSWR + CORE OSWR
-	 */
-	omap4_power_states[OMAP4_STATE_C4].valid =
-			cpuidle_params_table[OMAP4_STATE_C4].valid;
-	omap4_power_states[OMAP4_STATE_C4].type = OMAP4_STATE_C4;
-	omap4_power_states[OMAP4_STATE_C4].exit_latency =
-			cpuidle_params_table[OMAP4_STATE_C4].exit_latency;
-	omap4_power_states[OMAP4_STATE_C4].target_residency =
-			cpuidle_params_table[OMAP4_STATE_C4].target_residency;
-	omap4_power_states[OMAP4_STATE_C4].mpu_state = PWRDM_POWER_RET;
-	omap4_power_states[OMAP4_STATE_C4].mpu_logic_state = PWRDM_POWER_OFF;
-	omap4_power_states[OMAP4_STATE_C4].core_state = PWRDM_POWER_RET;
-	omap4_power_states[OMAP4_STATE_C4].core_logic_state = PWRDM_POWER_OFF;
-	omap4_power_states[OMAP4_STATE_C4].desc = "CPUs OFF, MPU OSWR + CORE OSWR";
+	omap4_power_states[OMAP4_STATE_C3].core_logic_state = PWRDM_POWER_OFF;
+	omap4_power_states[OMAP4_STATE_C3].desc = "CPUs OFF, MPU OSWR + CORE OSWR";
 
 }
 

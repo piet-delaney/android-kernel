@@ -357,15 +357,6 @@ config OMAP3_SDRC_AC_TIMING
 config OMAP_TPS6236X
        bool
 
-config OMAP_ALLOW_OSWR
-	bool  "Enable Open Switch Retention"
-	depends on ARCH_OMAP4
-	default n
-	help
-	  Select this option to enable OSWR support.
-	  Which means the Logic of power domains can be lost now
-	  unlike the CSWR wherein the logic is retained
-
 config OMAP_FIQ_DEBUGGER
 	bool "Enable the serial FIQ debugger on OMAP"
 	default y
@@ -376,7 +367,6 @@ config OMAP_FIQ_DEBUGGER
 config OMAP4_PPA_CPU1_ONLINE_BUG
 	bool "Enable Support for CPU1 ONLINE WA for OSWR/OFF"
 	depends on ARCH_OMAP4
-	depends on OMAP_ALLOW_OSWR
 	default y
 	help
 	  If an non GP OMAP4 device is used and PPA revision is < v1.7.3,
