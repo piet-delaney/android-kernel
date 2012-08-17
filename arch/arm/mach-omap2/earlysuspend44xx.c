@@ -29,35 +29,44 @@
 
 #include <linux/kernel.h>
 #include <linux/cpu.h>
-#include <linux/mutex.h>
 #include <linux/earlysuspend.h>
+#include <linux/workqueue.h>
 
-static DEFINE_MUTEX(earlysuspend44xx_lock);
+struct delayed_work earlysuspend44xx_suspend_work;
+struct delayed_work earlysuspend44xx_resume_work;
+
+static void earlysuspend44xx_suspend(struct work_struct *work)
+{
+	if (likely(cpu_online(1)))
+		cpu_down(1);
+}
+
+static void earlysuspend44xx_resume(struct work_struct *work)
+{
+	if (likely(!cpu_online(1)))
+		cpu_up(1);
+}
 
 static void earlysuspend44xx_early_suspend(struct early_suspend *handler)
 {
-	mutex_lock(&earlysuspend44xx_lock);
-	if (likely(cpu_online(1)))
-		cpu_down(1);
-	mutex_unlock(&earlysuspend44xx_lock);
+	schedule_delayed_work_on(0, &earlysuspend44xx_suspend_work, HZ);
 }
 
 static void earlysuspend44xx_late_resume(struct early_suspend *handler)
 {
-	mutex_lock(&earlysuspend44xx_lock);
-	if (likely(!cpu_online(1)))
-		cpu_up(1);
-	mutex_unlock(&earlysuspend44xx_lock);
+	schedule_delayed_work_on(0, &earlysuspend44xx_resume_work, HZ);
 }
 
-static struct early_suspend earlysuspend44xx_suspend = {
+static struct early_suspend earlysuspend44xx_handler = {
 	.suspend = earlysuspend44xx_early_suspend,
 	.resume = earlysuspend44xx_late_resume,
 };
 
 static int __init earlysuspend44xx_init(void)
 {
-	register_early_suspend(&earlysuspend44xx_suspend);
+	INIT_DELAYED_WORK_DEFERRABLE(&earlysuspend44xx_suspend_work, earlysuspend44xx_suspend);
+	INIT_DELAYED_WORK_DEFERRABLE(&earlysuspend44xx_resume_work, earlysuspend44xx_resume);
+	register_early_suspend(&earlysuspend44xx_handler);
 	return 0;
 }
 
