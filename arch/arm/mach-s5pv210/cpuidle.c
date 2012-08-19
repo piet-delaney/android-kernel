@@ -32,23 +32,6 @@
 #include <linux/workqueue.h>
 #endif /* CONFIG_S5P_IDLE2 */
 
-
-#ifdef CONFIG_S5P_IDLE2
-static bool idle2_disabled __read_mostly = false;
-static bool idle2_disabled_by_suspend __read_mostly = false;
-static bool work_initialised __read_mostly = false;
-static bool idle2_requested __read_mostly = false;
-static bool external_active __read_mostly;
-static bool inactive_pending;
-static bool enable_pending;
-static bool earlysuspend_active __read_mostly = false;
-static bool idle2_cpufreq_lock __read_mostly = false;
-static bool needs_topon __read_mostly = false;
-static bool topon_cancel_pending;
-static bool topoff_enabled __read_mostly = true;
-#endif /* CONFIG_S5P_IDLE2 */
-
-
 inline static void s5p_enter_idle(void)
 {
 	unsigned long tmp;
@@ -81,6 +64,7 @@ inline static int s5p_enter_idle_normal(struct cpuidle_device *device,
 	local_irq_enable();
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
 			(after.tv_usec - before.tv_usec);
+	device->last_state = &device->states[0];
 	return idle_time;
 }
 
@@ -93,138 +77,86 @@ static struct cpuidle_driver s5p_idle_driver = {
 
 #ifdef CONFIG_S5P_IDLE2
 /* Actual code that puts the SoC in different idle states */
-inline static int s5p_enter_idle_idle2_topoff(struct cpuidle_device *device,
-				struct cpuidle_state *state)
+inline static int s5p_enter_idle_deep(struct cpuidle_device *device,
+				struct cpuidle_state *state, bool flag)
 {
 	struct timeval before, after;
 	int idle_time;
 
-	if (enter_idle2_check()) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk("%s: Falling back to IDLE state\n", __func__);
-#endif
+	if (unlikely(!flag && enter_idle2_check())) {
+		printk("%s: C3 failed, falling back to C1\n", __func__);
 		s5p_enter_idle_normal(device, state);
+		device->last_state = &device->states[0];
 		return 0;
 	}
 
 	local_irq_disable();
 	do_gettimeofday(&before);
 
-	s5p_enter_idle2();
+	s5p_enter_idle2(flag);
+
 	do_gettimeofday(&after);
 	local_irq_enable();
+
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
 			(after.tv_usec - before.tv_usec);
-	return idle_time;
-}
+	if (flag)
+		device->last_state = &device->states[1];
+	else
+		device->last_state = &device->states[2];
 
-inline static int s5p_enter_idle_idle2_topon(struct cpuidle_device *device,
-				struct cpuidle_state *state)
-{
-	struct timeval before, after;
-	int idle_time;
-
-	if (enter_idle2_check()) {
-#ifdef CONFIG_S5P_IDLE2_DEBUG
-		printk("%s: Falling back to IDLE state\n", __func__);
-#endif
-		s5p_enter_idle_normal(device, state);
-		return 0;
-	}
-
-	local_irq_disable();
-	do_gettimeofday(&before);
-
-	s5p_enter_idle2_topon();
-	do_gettimeofday(&after);
-	local_irq_enable();
-	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
-			(after.tv_usec - before.tv_usec);
 	return idle_time;
 }
 
 void earlysuspend_active_fn(bool flag)
 {
 	if (flag)
-		earlysuspend_active = true;
+		idle2_flags |= EARLYSUSPEND_ACTIVE;
 	else
-		earlysuspend_active = false;
-	if (idle2_cpufreq_lock) {
-		printk("%s: idle2_set_cpufreq_lock(false)\n", __func__);
-		idle2_set_cpufreq_lock(false);
-		idle2_cpufreq_lock = false;
-	}
-	printk(KERN_DEBUG "earlysuspend_active: %d\n", earlysuspend_active);
-}
-
-static void idle2_requested_fn(bool flag)
-{
-	if (flag)
-		idle2_requested = true;
-	else
-		idle2_requested = false;
-	printk(KERN_DEBUG "idle2_requested: %d\n", idle2_requested);
+		idle2_flags &= ~EARLYSUSPEND_ACTIVE;
+	pr_info("earlysuspend_active: %d\n", flag);
 }
 
 static void external_active_fn(bool flag)
 {
 	if (flag)
-		external_active = true;
+		idle2_flags |= EXTERNAL_ACTIVE;
 	else
-		external_active = false;
-	printk(KERN_DEBUG "external_active: %d\n", external_active);
+		idle2_flags &= ~EXTERNAL_ACTIVE;
+	pr_info("external_active: %d\n", flag);
 }
 
 static void needs_topon_fn(bool flag)
 {
 	if (flag)
-		needs_topon = true;
+		idle2_flags |= NEEDS_TOPON;
 	else
-		needs_topon = false;
-	printk(KERN_DEBUG "needs_topon: %d\n", needs_topon);
+		idle2_flags &= ~NEEDS_TOPON;
+	printk(KERN_DEBUG "needs_topon: %d\n", flag);
 }
 
 inline static int s5p_enter_idle_deep_topoff(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
-	if (unlikely(idle2_disabled || idle2_disabled_by_suspend)) {
+	if (unlikely(idle2_flags & DISABLED_BY_SUSPEND)) {
 		printk(KERN_WARNING "%s: Calling s5p_enter_idle_normal()\n", __func__);
 		return s5p_enter_idle_normal(device, state);
 	}
-	if (unlikely(needs_topon || !topoff_enabled)) {
+	if (unlikely(idle2_flags & NEEDS_TOPON)) {
 		printk(KERN_WARNING "%s: Calling s5p_enter_idle_idle2_topon()\n", __func__);
-		return s5p_enter_idle_idle2_topon(device, state);
+		return s5p_enter_idle_deep(device, state, true);
 	}
-	return s5p_enter_idle_idle2_topoff(device, state);
+	return s5p_enter_idle_deep(device, state, false);
 }
 
 inline static int s5p_enter_idle_deep_topon(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
-	if (unlikely(idle2_disabled || idle2_disabled_by_suspend)) {
+	if (unlikely(idle2_flags & DISABLED_BY_SUSPEND)) {
 		printk(KERN_WARNING "%s: Calling s5p_enter_idle_normal()\n", __func__);
 		return s5p_enter_idle_normal(device, state);
 	}
-	return s5p_enter_idle_idle2_topon(device, state);
-}
-
-static struct workqueue_struct *idle2_wq;
-struct work_struct idle2_disable_work;
-struct delayed_work idle2_enable_work;
-struct work_struct idle2_external_active_work;
-struct delayed_work idle2_external_inactive_work;
-struct work_struct idle2_enable_topon_work;
-struct delayed_work idle2_cancel_topon_work;
-
-static void idle2_enable_work_fn(struct work_struct *work)
-{
-	idle2_requested_fn(true);
-}
-
-static void idle2_disable_work_fn(struct work_struct *work)
-{
-	cancel_delayed_work_sync(&idle2_enable_work);
-	idle2_requested_fn(false);
+	return s5p_enter_idle_deep(device, state, true);
 }
 
 static void idle2_external_active_work_fn(struct work_struct *work)
@@ -249,110 +181,66 @@ static void idle2_cancel_topon_work_fn(struct work_struct *work)
 	needs_topon_fn(false);
 }
 
-void idle2_enable(unsigned long delay)
-{
-	if (work_initialised && !enable_pending) {
-		enable_pending = true;
-		queue_delayed_work(idle2_wq, &idle2_enable_work, delay);
-		printk(KERN_DEBUG "enable_pending: %d\n", enable_pending);
-	}
-}
-
-void idle2_disable(void)
-{
-	if (work_initialised && (idle2_requested || enable_pending)) {
-		queue_work(idle2_wq, &idle2_disable_work);
-		enable_pending = false;
-	}
-}
-
 void idle2_external_active(void)
 {
-	if (work_initialised && (!external_active || inactive_pending)) {
+	if ((idle2_flags & WORK_INITIALISED)
+		&& (!(idle2_flags & EXTERNAL_ACTIVE)
+		|| (idle2_flags & INACTIVE_PENDING))) {
 		queue_work(idle2_wq, &idle2_external_active_work);
-		inactive_pending = false;
+		idle2_flags &= ~INACTIVE_PENDING;
+		printk(KERN_DEBUG "inactive_pending: false\n");
 	}
 }
 
 void idle2_external_inactive(unsigned long delay)
 {
-	if (work_initialised && external_active && !inactive_pending) {
-		inactive_pending = true;
+	if ((idle2_flags & WORK_INITIALISED)
+		&& (idle2_flags & EXTERNAL_ACTIVE)
+		&& !(idle2_flags & INACTIVE_PENDING)) {
+		idle2_flags |= INACTIVE_PENDING;
 		queue_delayed_work(idle2_wq, &idle2_external_inactive_work, delay);
-		printk(KERN_DEBUG "inactive_pending: %d\n", inactive_pending);
+		printk(KERN_DEBUG "inactive_pending: true\n");
 	}
 }
 
 void idle2_needs_topon(void)
 {
-	if (work_initialised && (!needs_topon || topon_cancel_pending)) {
+	if ((idle2_flags & WORK_INITIALISED)
+		&& (!(idle2_flags & NEEDS_TOPON)
+		|| (idle2_flags & TOPON_CANCEL_PENDING))) {
 		queue_work(idle2_wq, &idle2_enable_topon_work);
-		topon_cancel_pending = false;
+		idle2_flags &= ~TOPON_CANCEL_PENDING;
+		printk(KERN_DEBUG "topon_cancel_pending: false\n");
 	}
 }
 
 void idle2_cancel_topon(unsigned long delay)
 {
-	if (work_initialised && needs_topon && !topon_cancel_pending) {
-		topon_cancel_pending = true;
+	if ((idle2_flags & WORK_INITIALISED)
+		&& (idle2_flags & NEEDS_TOPON)
+		&& !(idle2_flags & TOPON_CANCEL_PENDING)) {
+		idle2_flags |= TOPON_CANCEL_PENDING;
 		queue_delayed_work(idle2_wq, &idle2_cancel_topon_work, delay);
-		printk(KERN_DEBUG "topon_cancel_pending: %d\n", topon_cancel_pending);
+		printk(KERN_DEBUG "topon_cancel_pending: true\n");
 	}
 }
 
-static int idle2_disabled_set(const char *arg, const struct kernel_param *kp)
-{
-	int ret;
-	printk(KERN_INFO "%s: %s\n", __func__, arg);
-	return ret = param_set_bool(arg, kp);
-}
-
-static int idle2_disabled_get(char *buffer, const struct kernel_param *kp)
-{
-	return param_get_bool(buffer, kp);
-}
-
-static struct kernel_param_ops idle2_disabled_ops = {
-	.set = idle2_disabled_set,
-	.get = idle2_disabled_get,
-};
-module_param_cb(idle2_disabled, &idle2_disabled_ops, &idle2_disabled, 0644);
-
-static int topoff_enabled_set(const char *arg, const struct kernel_param *kp)
-{
-	int ret;
-	printk(KERN_INFO "%s: %s\n", __func__, arg);
-	return ret = param_set_bool(arg, kp);
-}
-
-static int topoff_enabled_get(char *buffer, const struct kernel_param *kp)
-{
-	return param_get_bool(buffer, kp);
-}
-
-static struct kernel_param_ops topoff_enabled_ops = {
-	.set = topoff_enabled_set,
-	.get = topoff_enabled_get,
-};
-module_param_cb(topoff_enabled, &topoff_enabled_ops, &topoff_enabled, 0644);
-
 static int s5p_idle_prepare(struct cpuidle_device *device)
 {
-	if (!idle2_disabled && !idle2_disabled_by_suspend && !external_active && idle2_requested && earlysuspend_active) {
-		if (unlikely(needs_topon || !topoff_enabled)) {
-			device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
-			device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
-		} else {
-			device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
-			device->states[2].flags &= ~CPUIDLE_FLAG_IGNORE;
-		}
-		if (unlikely(!idle2_cpufreq_lock)) {
-			idle2_set_cpufreq_lock(true);
-			idle2_cpufreq_lock = true;
-		}
-	} else {
+	if (unlikely(idle2_flags & DISABLED_BY_SUSPEND)) {
 		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
 		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
+		return 0;
+	}
+	if ((idle2_flags & NEEDS_TOPON)
+		|| !(idle2_flags & EARLYSUSPEND_ACTIVE)
+		|| (idle2_flags & EXTERNAL_ACTIVE)) {
+		device->states[1].flags &= ~CPUIDLE_FLAG_IGNORE;
+		device->states[2].flags |= CPUIDLE_FLAG_IGNORE;
+		return 0;
+	} else {
+		device->states[1].flags |= CPUIDLE_FLAG_IGNORE;
+		device->states[2].flags &= ~CPUIDLE_FLAG_IGNORE;
 	}
 	return 0;
 }
@@ -361,11 +249,11 @@ static int idle2_pm_notify(struct notifier_block *nb,
 	unsigned long event, void *dummy)
 {
 	if (event == PM_SUSPEND_PREPARE) {
-		idle2_disabled_by_suspend = true;
+		idle2_flags |= DISABLED_BY_SUSPEND;
 		printk(KERN_INFO "%s: IDLE2 disabled\n", __func__);
 	}
 	else if (event == PM_POST_SUSPEND) {
-		idle2_disabled_by_suspend = false;
+		idle2_flags &= ~DISABLED_BY_SUSPEND;
 		printk(KERN_INFO "%s: IDLE2 enabled\n", __func__);
 	}
 	return NOTIFY_OK;
@@ -374,24 +262,33 @@ static int idle2_pm_notify(struct notifier_block *nb,
 static struct notifier_block idle2_pm_notifier = {
 	.notifier_call = idle2_pm_notify,
 };
+
 #endif /* CONFIG_S5P_IDLE2 */
 
+static void idle2_enable_hlt(struct work_struct *work)
+{
+        enable_hlt();
+        pr_info("%s: Enabling CPUidle\n", __func__);
+}
+static DECLARE_DELAYED_WORK(idle2_enable_hlt_work, idle2_enable_hlt);
 
 /* Initialize CPU idle by registering the idle states */
 static int s5p_init_cpuidle(void)
 {
 	struct cpuidle_device *device;
 
+	disable_hlt();
+        schedule_delayed_work(&idle2_enable_hlt_work, 30 * HZ);
+        pr_info("%s: Disabling CPUidle\n", __func__);
+
 #ifdef CONFIG_S5P_IDLE2
 	idle2_wq = create_singlethread_workqueue("idle2_workqueue");
 	BUG_ON(!idle2_wq);
-	INIT_WORK(&idle2_disable_work, idle2_disable_work_fn);
-	INIT_DELAYED_WORK(&idle2_enable_work, idle2_enable_work_fn);
 	INIT_WORK(&idle2_external_active_work, idle2_external_active_work_fn);
 	INIT_DELAYED_WORK(&idle2_external_inactive_work, idle2_external_inactive_work_fn);
 	INIT_WORK(&idle2_enable_topon_work, idle2_enable_topon_work_fn);
 	INIT_DELAYED_WORK(&idle2_cancel_topon_work, idle2_cancel_topon_work_fn);
-	work_initialised = true;
+	idle2_flags |= WORK_INITIALISED;
 #endif /* CONFIG_S5P_IDLE2 */
 
 	cpuidle_register_driver(&s5p_idle_driver);
@@ -404,28 +301,26 @@ static int s5p_init_cpuidle(void)
 	device->states[0].exit_latency = 1;	/* uS */
 	device->states[0].target_residency = 1;
 	device->states[0].flags = CPUIDLE_FLAG_TIME_VALID;
-	strcpy(device->states[0].name, "IDLE");
+	strcpy(device->states[0].name, "C1");
 	strcpy(device->states[0].desc, "ARM clock gating - WFI");
 	device->state_count++;
 	
 #ifdef CONFIG_S5P_IDLE2
 	/* Deep-Idle top ON Wait for interrupt state */
 	device->states[1].enter = s5p_enter_idle_deep_topon;
-	device->states[1].exit_latency = 1;	/* uS */
+	device->states[1].exit_latency = 1;
 	device->states[1].target_residency = 5000;
-	device->states[1].flags = CPUIDLE_FLAG_TIME_VALID|
-					CPUIDLE_FLAG_CHECK_BM;
-	strcpy(device->states[1].name, "IDLE2-TOPON");
+	device->states[1].flags = CPUIDLE_FLAG_TIME_VALID;
+	strcpy(device->states[1].name, "C2");
 	strcpy(device->states[1].desc, "ARM Power gating - WFI");
 	device->state_count++;
 
 	/* Deep-Idle top OFF Wait for interrupt state */
 	device->states[2].enter = s5p_enter_idle_deep_topoff;
-	device->states[2].exit_latency = 300;	/* uS */
-	device->states[2].target_residency = 7000;
-	device->states[2].flags = CPUIDLE_FLAG_TIME_VALID |
-					CPUIDLE_FLAG_CHECK_BM;
-	strcpy(device->states[2].name, "IDLE2-TOPOFF");
+	device->states[2].exit_latency = 400;
+	device->states[2].target_residency = 5000;
+	device->states[2].flags = CPUIDLE_FLAG_TIME_VALID;
+	strcpy(device->states[2].name, "C3");
 	strcpy(device->states[2].desc, "ARM/TOP/SUB Power gating - WFI");
 	device->state_count++;
 
@@ -443,13 +338,7 @@ static int s5p_init_cpuidle(void)
 		return -EIO;
 	}
 #ifdef CONFIG_S5P_IDLE2
-	regs_save = dma_alloc_coherent(NULL, 4096, &phy_regs_save, GFP_KERNEL);
-	if (regs_save == NULL) {
-		printk(KERN_ERR "DMA alloc error\n");
-		BUG();
-		return -ENOMEM;
-	}
-	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.213 by <willtisdale@gmail.com>\n");
+	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.300 by <willtisdale@gmail.com>\n");
 
 	register_pm_notifier(&idle2_pm_notifier);
 

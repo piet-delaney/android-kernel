@@ -106,6 +106,9 @@ config S5P_DEV_FB
 config S5P_IDLE2
 	bool "Support S5P IDLE2 functionality"
 	depends on CPU_IDLE && PM && !S5PV210_CORESIGHT
+	select ARM_ERRATA_430973
+	select ARM_ERRATA_458693
+	select ARM_ERRATA_460075
 	default y
 	help
 	  IDLE2 enables additional power saving when audio is playing and the

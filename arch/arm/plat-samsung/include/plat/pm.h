@@ -57,6 +57,8 @@ extern unsigned char pm_uart_udivslot;  /* true to save UART UDIVSLOT */
 /* from sleep.S */
 
 extern int  s3c_cpu_save(unsigned long *saveblk, long);
+extern int  s3c_idle2_cpu_save(unsigned long *saveblk, long);
+
 extern void s3c_cpu_resume(void);
 
 extern void s3c2410_cpu_suspend(void);

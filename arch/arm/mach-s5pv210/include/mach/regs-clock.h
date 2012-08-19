@@ -342,8 +342,12 @@
 
 #define S5P_IDLE_CFG_TL_MASK	(3 << 30)
 #define S5P_IDLE_CFG_TM_MASK	(3 << 28)
+#define S5P_IDLE_CFG_L2_MASK	(3 << 26)
 #define S5P_IDLE_CFG_TL_ON	(2 << 30)
 #define S5P_IDLE_CFG_TM_ON	(2 << 28)
+#define S5P_IDLE_CFG_TL_RET	(1 << 30)
+#define S5P_IDLE_CFG_TM_RET	(1 << 28)
+#define S5P_IDLE_CFG_L2_RET	(1 << 26)
 #define S5P_IDLE_CFG_DIDLE	(1 << 0)
 
 #define S5P_CFG_WFI_CLEAN		(~(3 << 8))
