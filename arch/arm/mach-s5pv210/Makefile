@@ -58,4 +58,7 @@ obj-$(CONFIG_S5PV210_SETUP_FIMC1)	+= setup-fimc1.o
 obj-$(CONFIG_S5PV210_SETUP_FIMC2)	+= setup-fimc2.o
 
 obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o
+ifdef CONFIG_S5P_IDLE2_DEBUG
+CFLAGS_cpuidle.o               := -DDEBUG
+endif
 obj-$(CONFIG_CPU_FREQ)		+= dev-cpufreq.o
