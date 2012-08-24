@@ -355,12 +355,27 @@ config TEGRA_CLUSTER_CONTROL
 
 config TEGRA_AUTO_HOTPLUG
 	bool "Enable automatic CPU hot-plugging"
-	depends on HOTPLUG_CPU && CPU_FREQ && !ARCH_CPU_PROBE_RELEASE && !ARCH_TEGRA_2x_SOC
-	default y
+	depends on HOTPLUG_CPU && CPU_FREQ && !ARCH_CPU_PROBE_RELEASE && !ARCH_TEGRA_2x_SOC && !TEGRA_CHEAPER_AUTO_HOTPLUG
+	default n
 	help
 	  This option enables turning CPUs off/on and switching tegra
 	  high/low power CPU clusters automatically, corresponding to
 	  CPU frequency scaling.
+
+config TEGRA_CHEAPER_AUTO_HOTPLUG
+	bool "Enable better and cheaper automatic CPU hot-plugging"
+	depends on HOTPLUG_CPU && CPU_FREQ && !ARCH_CPU_PROBE_RELEASE && !ARCH_TEGRA_2x_SOC
+	default y
+	help
+	  This option enables turning CPUs off/on automatically.
+	  This driver is much cheaper than the default NVIDIA supplied
+	  mess. It also reduces the amount of needless hotplug events
+	  and doesn't attempt to use heuristics to see if the CPUs are
+	  loaded. It simply uses an averaged nr_running() value, to
+	  determine the system load.
+	  Select this instead of the above if you know what is good for you.
+	  If you really want to select the other, you will need to unselect
+	  this first.
 
 config TEGRA_MC_EARLY_ACK
 	bool "Enable early acknowledgement from mermory controller"
