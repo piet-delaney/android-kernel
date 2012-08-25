@@ -253,10 +253,12 @@ static void tegra3_hotplug_early_suspend(struct early_suspend *handler)
 {
 	pr_info("tegra3_hotplug: early suspend handler\n");
 
+	/* Cancel all scheduled delayed work to avoid races */
+	cancel_delayed_work_sync(&hotplug_offline_work);
 	cancel_delayed_work_sync(&tegra3_hotplug_work);
 	if (num_online_cpus() > 1) {
 		pr_info("tegra3_hotplug: Offlining CPUs for early suspend\n");
-		queue_delayed_work(tegra3_hotplug_wq, &hotplug_offline_all_work, ONE_SECOND);
+		queue_delayed_work(tegra3_hotplug_wq, &hotplug_offline_all_work, 0);
 	}
 }
 
