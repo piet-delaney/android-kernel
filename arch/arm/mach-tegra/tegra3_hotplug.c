@@ -39,7 +39,7 @@
 #define DEBUG 0
 
 #define CPUS_AVAILABLE 		num_possible_cpus()
-#define MIN_ONLINE_CPUS 	1
+#define MIN_ONLINE_CPUS 	2
 #define SAMPLING_PERIODS 	10
 #define INDEX_MAX_VALUE		(SAMPLING_PERIODS - 1)
 #define MIN_SAMPLING_RATE 	msecs_to_jiffies(10) /* 10 ms min sampling rate */
