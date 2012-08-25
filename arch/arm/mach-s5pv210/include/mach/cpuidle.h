@@ -11,14 +11,18 @@
 */
 
 #ifdef CONFIG_S5P_IDLE2
-extern int s5p_idle2_save(unsigned long *saveblk);
-extern void s5p_idle2_resume(void);
-extern void s5p_idle2(void);
-extern void idle2_enable(unsigned long delay);
-extern void idle2_disable(void);
+/*
+ * For external function calls.
+ * In here to avoid importing the entire of idle2.h
+ * into external c files.
+ */
 extern void idle2_external_active(void);
 extern void idle2_external_inactive(unsigned long delay);
 extern void earlysuspend_active_fn(bool flag);
 extern void idle2_cancel_topon(unsigned long delay);
 extern void idle2_needs_topon(void);
+extern void idle2_bluetooth_active(void);
+extern void idle2_bluetooth_timeout(unsigned long delay);
+extern void idle2_uart_active(void);
+extern void idle2_uart_timeout(unsigned long delay);
 #endif
