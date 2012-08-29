@@ -26,7 +26,7 @@
 #include "power.h"
 
 #ifdef CONFIG_S5P_IDLE2
-#include <mach/cpuidle.h>
+#include <mach/idle2.h>
 #endif /* CONFIG_S5P_IDLE2 */
 
 

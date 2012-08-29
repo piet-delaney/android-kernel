@@ -38,7 +38,7 @@
 #include "herring.h"
 
 #ifdef CONFIG_S5P_IDLE2
-#include <mach/cpuidle.h>
+#include <mach/idle2.h>
 #endif /* CONFIG_S5P_IDLE2 */
 
 #define IRQ_BT_HOST_WAKE      IRQ_EINT(21)
