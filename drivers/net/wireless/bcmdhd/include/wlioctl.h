@@ -1370,11 +1370,7 @@ typedef struct wl_po {
 
 
 #define PM_OFF  0
-#ifdef CONFIG_DHD_DISABLE_PM_MAX
-#define PM_MAX 2
-#else
-#define PM_MAX 1
-#endif /* CONFIG_DHD_DISABLE_PM_MAX */
+#define PM_MAX  1
 #define PM_FAST 2
 
 #define LISTEN_INTERVAL			10
