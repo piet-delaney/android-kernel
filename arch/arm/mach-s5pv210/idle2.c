@@ -1,7 +1,8 @@
 /*
- * arch/arm/mach-s5pv210/cpuidle.c
+ * arch/arm/mach-s5pv210/idle2.c
  *
  * Copyright (c) 2012 - Will Tisdale <willtisdale@gmail.com>
+ * Portions of code (c) Samsung
  *
  * IDLE2 driver for S5PV210 - Provides additional idle states
  * and associated functions.
@@ -33,16 +34,21 @@
 #include <linux/cpufreq.h>
 #include <linux/interrupt.h>
 #include <mach/pm-core.h>
+#include <mach/idle2.h>
+#include <linux/hrtimer.h>
+#include <linux/suspend.h>
+#include <linux/workqueue.h>
 
 #define MAX_CHK_DEV		5
-#define IDLE2_FREQ		(400 * 1000)
+#define IDLE2_FREQ		(800 * 1000) /* 800MHz when screen off */
 #define DISABLE_FURTHER_CPUFREQ	0x10
 #define ENABLE_FURTHER_CPUFREQ	0x20
-
-
+#define STATE_C1	1
+#define STATE_C2	2
+#define STATE_C3	3
 
 /* IDLE2 control flags */
-static unsigned int idle2_flags;
+static u16 idle2_flags;
 #define DISABLED_BY_SUSPEND	(1 << 0)
 #define EXTERNAL_ACTIVE		(1 << 1)
 #define WORK_INITIALISED	(1 << 2)
@@ -55,52 +61,47 @@ static unsigned int idle2_flags;
 #define BLUETOOTH_REQUEST	(1 << 9)
 #define UART_TIMEOUT		(1 << 10)
 #define UART_REQUEST		(1 << 11)
-#define AUDIO_ACTIVE		(1 << 12)
-#define CPUFREQ_LOCK_ALLOWED	(1 << 13)
-#define CPUFREQ_LOCK_ACTIVE	(1 << 14)
+//#define AUDIO_ACTIVE		(1 << 12)
+//#define CPUFREQ_LOCK_ALLOWED	(1 << 13)
+//#define CPUFREQ_LOCK_ACTIVE	(1 << 14)
 
-#include <linux/suspend.h>
-#include <linux/workqueue.h>
-#ifdef CONFIG_DEBUG_FS
-#include <linux/debugfs.h>
-#include <linux/seq_file.h>
-#endif /* CONFIG_DEBUG_FS */
+/* For statistics */
+/*
+ * FIXME: Use array or dump them altogether once it's confirmed working properly.
+ * I prefer dumping them, because they probably aren't necessary.
+ */
+u32 bail_C2, bail_C3;
+u32 request_C2, request_C3, enter_C2, enter_C3, done_C2, done_C3, done_C1;
+u8 idle_state;
+u32 idle_time;
+u64 time_in_state[3];
+u32 bail_vic, bail_mmc, bail_gating, bail_i2s, bail_rtc, bail_nand, bail_C3_gating, bail_DMA;
 
-#define STATE_C1	1
-#define STATE_C2	2
-#define STATE_C3	3
-static unsigned int bail_C2, bail_C3;
-static unsigned int request_C2, request_C3, enter_C2, enter_C3, done_C2, done_C3, done_C1;
-static unsigned long long time_in_state[3];
-static unsigned char idle_state;
-static unsigned long idle_time;
-#define IDLE2_VERSION 	360
-
-
+/* Work function declarations */
 static struct workqueue_struct *idle2_wq;
 struct work_struct idle2_external_active_work;
 struct delayed_work idle2_external_inactive_work;
 struct work_struct idle2_enable_topon_work;
 struct delayed_work idle2_cancel_topon_work;
+struct delayed_work idle2_lock_cpufreq_work;
+struct delayed_work idle2_unlock_cpufreq_work;
 bool top_enabled __read_mostly;
-/* For stat collection */
-static u32 bail_vic, bail_mmc, bail_gating, bail_i2s, bail_rtc, bail_nand, bail_C3_gating, bail_DMA;
 
 /*
  * For saving & restoring state
  */
 static unsigned long vic_regs[4];
 static unsigned long tmp, val;
-static unsigned long save_eint_mask;
 
 #define GPIO_OFFSET		0x20
 #define GPIO_CON_PDN_OFFSET	0x10
 #define GPIO_PUD_PDN_OFFSET	0x14
 #define GPIO_PUD_OFFSET		0x08
 
-/* Specific device list for checking before entering
+/*
+ * Specific device list for checking before entering
  * idle2 mode
- **/
+ */
 struct check_device_op {
 	void __iomem		*base;
 	struct platform_device	*pdev;
@@ -198,8 +199,6 @@ inline static bool idle2_pre_entry_check(void)
 	i2sdma_getpos(&src);
 	src = src & 0x3FFF;
 	src = 0x4000 - src;
-	if (src < 0x2000)
-		printk("I2S DMA src: %x\n", src);
 	if (unlikely(src < 0x150)) {
 		bail_i2s++;
 		return true;
@@ -238,6 +237,9 @@ inline static bool check_C3_clock_gating(void)
 	return false;
 }
 
+/*
+ * Function which actually enters into DEEP-IDLE states
+ */
 extern void s5p_enter_idle(void);
 inline static int s5p_enter_idle2(bool top_enabled)
 {
@@ -300,27 +302,27 @@ inline static int s5p_enter_idle2(bool top_enabled)
 	__raw_writel(tmp, S5P_IDLE_CFG);
 
 	/*
-	 * Set configuration for idle entry
+	 * Setting configuration for idle2 entry...
 	 */
 
 	/*
-	 * Wakeup Sources: Enable all wakeup sources by unsetting
-	 * all bits in S5P_WAKEUP_MASK.
-	 * RTC_ALARM, RTC_TICK, TS0 & 1, KEY, MMC0-3, I2S, ST, CEC
+	 * Wakeup Source configuration:
+	 * Set all bits, then reset required sources.
+	 * Enable RTC_ALARM, RTC_TICK, KEY, I2S, ST
 	 */
-	tmp = __raw_readl(S5P_WAKEUP_MASK);
-	tmp &= ~0xFFFFFFFFU;
+	tmp |= 0xffffffffU;
+	tmp &= ~((1 << 1) | (1 << 2) | (1 << 5)
+		| (1 << 13) | (1 << 14));
 	__raw_writel(tmp, S5P_WAKEUP_MASK);
 
 	/*
-	 * External Interrupts: Save current EINT MASK register
-	 * Set all bits to avoid spurious wakeups
-	 * Enable EINT 22 & 29 as wakeup sources
+	 * External Interrupt wakeup sources:
+	 * Firstly set all bits to avoid spurious wakeups
+	 * Enable max8998, modem, NFC, bcm4329, fsa9480, k3g
 	 */
-	save_eint_mask = __raw_readl(S5P_EINT_WAKEUP_MASK);
-	tmp = save_eint_mask;
-	tmp |= 0xFFFFFFFFU;
-	tmp &= ~((1 << 22) | (1 << 29));
+	tmp |= 0xffffffffU;
+	tmp &= ~((1 << 7) | (1 << 11) | (1 << 12) | (1 << 15)
+		| (1 << 20) | (1 << 21) | (1 << 23) | (1 << 29));
 	__raw_writel(tmp, S5P_EINT_WAKEUP_MASK);
 
 	/*
@@ -345,7 +347,17 @@ inline static int s5p_enter_idle2(bool top_enabled)
 	__raw_writel(__raw_readl(S5P_WAKEUP_STAT), S5P_WAKEUP_STAT);
 
 	/*
-	 * Enter idle2 mode using the platform suspend code
+	 * Entering idle2 state using platform PM code.
+	 */
+
+	/*
+	 * Flush all caches before calling
+	 * s3c_idle2_cpu_save()
+	 */
+	flush_cache_all();
+
+	/*
+	 * Save CPU state and enter idle2 state
 	 */
 	s3c_idle2_cpu_save(0, PLAT_PHYS_OFFSET - PAGE_OFFSET);
 
@@ -366,9 +378,11 @@ inline static int s5p_enter_idle2(bool top_enabled)
 	}
 
 	/*
-	 * Restore the saved EINT Wakeup mask
+	 * EINT Wakeup sources:
+	 * Reset all bits as per default
 	 */
-	__raw_writel(save_eint_mask, S5P_EINT_WAKEUP_MASK);
+	tmp &= ~0xffffffffU;
+	__raw_writel(tmp, S5P_EINT_WAKEUP_MASK);
 
 	/*
 	 * Restore S5P_IDLE_CFG & S5P_PWR_CFG registers
@@ -386,120 +400,11 @@ inline static int s5p_enter_idle2(bool top_enabled)
 	return 0;
 }
 
-int s5p_init_remap(void)
-{
-	int i = 0;
-	struct platform_device *pdev;
-	struct resource *res;
-	/* Allocate memory region to access IP's directly */
-	for (i = 0 ; i < MAX_CHK_DEV ; i++) {
-
-		pdev = chk_dev_op[i].pdev;
-
-		if (pdev == NULL)
-			break;
-
-		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-		if (!res) {
-			pr_err("%s: failed to get io memory region\n", __func__);
-			return -EINVAL;
-		}
-		/* ioremap for register block */
-		if(pdev == &s5p_device_onenand)
-			chk_dev_op[i].base = ioremap(res->start+0x00600000, 4096);
-		else
-			chk_dev_op[i].base = ioremap(res->start, 4096);
-
-		if (!chk_dev_op[i].base) {
-			pr_err("%s: failed to remap io region\n", __func__);
-			return -EINVAL;
-		}
-	}
-	return 0;
-}
-
-void idle2_lock_cpufreq(void)
-{
-	preempt_enable();
-	local_irq_enable();
-	/* This *must* be called from a non-atomic context */
-	cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
-			DISABLE_FURTHER_CPUFREQ);
-	pr_info("%s: CPUfreq locked to %dKHz\n", __func__, IDLE2_FREQ);
-	local_irq_disable();
-	preempt_disable();
-	idle2_flags |= CPUFREQ_LOCK_ACTIVE;
-}
-
-void idle2_unlock_cpufreq(void)
-{
-	preempt_enable();
-	local_irq_enable();
-	cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
-			ENABLE_FURTHER_CPUFREQ);
-	pr_info("%s: CPUfreq unlocked from %dKHz\n", __func__, IDLE2_FREQ);
-	local_irq_disable();
-	preempt_disable();
-	idle2_flags &= ~CPUFREQ_LOCK_ACTIVE;
-}
-
-void idle2_cpufreq_lock(bool flag)
-{
-	if (idle2_flags & EARLYSUSPEND_ACTIVE) {
-		if (flag && (idle2_flags & AUDIO_ACTIVE))
-			idle2_lock_cpufreq();
-	} else if (!flag && (idle2_flags & CPUFREQ_LOCK_ACTIVE))
-			idle2_unlock_cpufreq();
-}
-
-void idle2_audio_active(bool flag)
-{
-	if (flag) {
-		idle2_flags |= AUDIO_ACTIVE;
-		idle2_cpufreq_lock(true);
-	} else {
-		idle2_flags &= ~AUDIO_ACTIVE;
-		idle2_cpufreq_lock(false);
-	}
-}
-
-inline static unsigned long long report_state_time(unsigned char idle_state)
-{
-	if (unlikely(!time_in_state[idle_state]))
-		return 0;
-	else
-		return time_in_state[idle_state];
-}
-
-inline static unsigned int report_average_residency(unsigned char idle_state)
-{
-	unsigned long long time = 0;
-	time = report_state_time(idle_state);
-	if (unlikely(!time))
-		return 0;
-
-	switch (idle_state) {
-	case 0:
-		if (likely(done_C1 > 0)) {
-			do_div(time, done_C1);
-			break;
-	}
-	case 1:
-		if (likely(done_C2 > 0)) {
-			do_div(time, done_C2);
-			break;
-	}
-	case 2:
-		if (likely(done_C3 > 0)) {
-			do_div(time, done_C3);
-			break;
-	}
-	default:
-		break;
-	}
-	return time;
-}
-
+/*
+ * Function which controls invocation of DEEP-IDLE states
+ * and invokes all the necessary checks and does all the
+ * necessary preparations to enter.
+ */
 inline int s5p_enter_idle_deep(struct cpuidle_device *device,
 				struct cpuidle_state *state)
 {
@@ -515,6 +420,11 @@ inline int s5p_enter_idle_deep(struct cpuidle_device *device,
 	unsigned char requested_state = (state_name[1] - 48);
 
 	do_gettimeofday(&before);
+
+	/*
+	 * Check for any soft-expired timers and run them
+	 */
+	hrtimer_peek_ahead_timers();
 
 	local_irq_disable();
 	local_fiq_disable();
@@ -558,7 +468,6 @@ inline int s5p_enter_idle_deep(struct cpuidle_device *device,
 		} else
 			goto enter_C3_state;
 	default:
-		WARN_ON(0);
 		/* Fallthrough */
 		break;
 	}
@@ -566,8 +475,6 @@ inline int s5p_enter_idle_deep(struct cpuidle_device *device,
 	/*
 	 * If we fall through enter C1.
 	 * WARNING: WE *must* restore VIC interupts to enter C1.
-	 * Failure to do so results in a WDT reboot with no panic
-	 * or stacktrace.
 	 *
 	 * When we return from C1, tell the cpuidle governor we
 	 * ended up in C1.
@@ -631,27 +538,75 @@ restore_vic_state:
 	__raw_writel(vic_regs[2], VA_VIC2 + VIC_INT_ENABLE);
 	__raw_writel(vic_regs[3], VA_VIC3 + VIC_INT_ENABLE);
 
+/*
+ * We put this here because we don't want wakeup reasons if
+ * we fall back to C1, because it makes the stats meaningless.
+ */
+#ifdef CONFIG_S5P_IDLE2_STATS
+	idle2_update_wakeup_stats();
+#endif
+
 restore_interrupts:
 	do_gettimeofday(&after);
-
 	local_fiq_enable();
 	local_irq_enable();
 
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
 			(after.tv_usec - before.tv_usec);
-	time_in_state[idle_state] += (unsigned long long)idle_time;
+	time_in_state[idle_state] += (u64)idle_time;
+
 	idle_state = 0;
 	return idle_time;
 }
+
+/*
+ * Workqueue related functions which control IDLE2 invocation.
+ */
+
+static void idle2_lock_cpufreq_work_fn(struct work_struct *work)
+{
+	cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+			DISABLE_FURTHER_CPUFREQ);
+	pr_info("%s: CPUfreq locked to %dKHz\n", __func__, IDLE2_FREQ);
+//	idle2_flags |= CPUFREQ_LOCK_ACTIVE;
+}
+
+static void idle2_unlock_cpufreq_work_fn(struct work_struct *work)
+{
+	cpufreq_driver_target(cpufreq_cpu_get(0), IDLE2_FREQ,
+			ENABLE_FURTHER_CPUFREQ);
+	pr_info("%s: CPUfreq unlocked from %dKHz\n", __func__, IDLE2_FREQ);
+//	idle2_flags &= ~CPUFREQ_LOCK_ACTIVE;
+}
+
+// void idle2_cpufreq_lock(bool flag)
+// {
+// 	if (idle2_flags & EARLYSUSPEND_ACTIVE) {
+// 		if (flag && (idle2_flags & AUDIO_ACTIVE))
+// 			queue_delayed_work(idle2_wq, &idle2_lock_cpufreq_work, 0);
+// 	} else if (!flag && (idle2_flags & CPUFREQ_LOCK_ACTIVE))
+// 			queue_delayed_work(idle2_wq, &idle2_unlock_cpufreq_work, 0);
+// }
+
+// void idle2_audio_active(bool flag)
+// {
+// 	if (flag) {
+// 		idle2_flags |= AUDIO_ACTIVE;
+// 		idle2_cpufreq_lock(true);
+// 	} else {
+// 		idle2_flags &= ~AUDIO_ACTIVE;
+// 		idle2_cpufreq_lock(false);
+// 	}
+// }
 
 void earlysuspend_active_fn(bool flag)
 {
 	if (flag) {
 		idle2_flags |= EARLYSUSPEND_ACTIVE;
-		idle2_cpufreq_lock(true);
+		queue_delayed_work(idle2_wq, &idle2_lock_cpufreq_work, 0);
 	} else {
 		idle2_flags &= ~EARLYSUSPEND_ACTIVE;
-		idle2_cpufreq_lock(false);
+		queue_delayed_work(idle2_wq, &idle2_unlock_cpufreq_work, 0);
 	}
 	pr_info("idle2: earlysuspend_active: %d\n", flag);
 }
@@ -717,6 +672,10 @@ static void idle2_cancel_topon_work_fn(struct work_struct *work)
 		idle2_flags &= ~TOPON_CANCEL_PENDING;
 }
 
+/*
+ * external_active / inactive functions are called for
+ * USB vbus activity.
+ */
 void idle2_external_active(void)
 {
 	if ((idle2_flags & WORK_INITIALISED)
@@ -737,12 +696,11 @@ void idle2_external_inactive(unsigned long delay)
 	}
 }
 
-void idle2_needs_topon(void)
-{
-	if (idle2_flags & WORK_INITIALISED)
-		queue_work(idle2_wq, &idle2_enable_topon_work);
-}
-
+/*
+ * Bluetooth functions are called for bluetooth activity.
+ * They also ignore the large number of active calls you can
+ * get whilst bluetooth is active.
+ */
 void idle2_bluetooth_active(void)
 {
 	if (idle2_flags & WORK_INITIALISED) {
@@ -761,6 +719,9 @@ void idle2_bluetooth_timeout(unsigned long delay)
 	}
 }
 
+/*
+ * uart functions are called when the GPS is active
+ */
 void idle2_uart_active(void)
 {
 	if (idle2_flags & WORK_INITIALISED) {
@@ -779,14 +740,27 @@ void idle2_uart_timeout(unsigned long delay)
 	}
 }
 
-
-void idle2_cancel_topon(unsigned long delay)
+static int idle2_pm_notify(struct notifier_block *nb,
+	unsigned long event, void *dummy)
 {
-	if (idle2_flags & WORK_INITIALISED) {
-		idle2_flags |= TOPON_CANCEL_PENDING;
-		queue_delayed_work(idle2_wq, &idle2_cancel_topon_work, delay);
+	if (event == PM_SUSPEND_PREPARE) {
+		idle2_flags |= DISABLED_BY_SUSPEND;
+		pr_info("%s: IDLE2 disabled\n", __func__);
 	}
+	else if (event == PM_POST_SUSPEND) {
+		idle2_flags &= ~DISABLED_BY_SUSPEND;
+		pr_info("%s: IDLE2 enabled\n", __func__);
+	}
+	return NOTIFY_OK;
 }
+
+static struct notifier_block idle2_pm_notifier = {
+	.notifier_call = idle2_pm_notify,
+};
+
+/*
+ * Functions which are called from cpuidle.c.
+ */
 
 inline int s5p_idle_prepare(struct cpuidle_device *device)
 {
@@ -818,120 +792,53 @@ inline int s5p_idle_prepare(struct cpuidle_device *device)
 	return 0;
 }
 
-static int idle2_pm_notify(struct notifier_block *nb,
-	unsigned long event, void *dummy)
-{
-	if (event == PM_SUSPEND_PREPARE) {
-		idle2_flags |= DISABLED_BY_SUSPEND;
-		pr_info("%s: IDLE2 disabled\n", __func__);
-	}
-	else if (event == PM_POST_SUSPEND) {
-		idle2_flags &= ~DISABLED_BY_SUSPEND;
-		pr_info("%s: IDLE2 enabled\n", __func__);
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block idle2_pm_notifier = {
-	.notifier_call = idle2_pm_notify,
-};
-
 void s5p_init_idle2_work(void)
 {
 	idle2_wq = create_singlethread_workqueue("idle2_workqueue");
 	BUG_ON(!idle2_wq);
 	INIT_WORK(&idle2_external_active_work, idle2_external_active_work_fn);
-	INIT_DELAYED_WORK(&idle2_external_inactive_work, idle2_external_inactive_work_fn);
+	INIT_DELAYED_WORK_DEFERRABLE(&idle2_external_inactive_work, idle2_external_inactive_work_fn);
 	INIT_WORK(&idle2_enable_topon_work, idle2_enable_topon_work_fn);
-	INIT_DELAYED_WORK(&idle2_cancel_topon_work, idle2_cancel_topon_work_fn);
+	INIT_DELAYED_WORK_DEFERRABLE(&idle2_cancel_topon_work, idle2_cancel_topon_work_fn);
+	INIT_DELAYED_WORK_DEFERRABLE(&idle2_lock_cpufreq_work, idle2_lock_cpufreq_work_fn);
+	INIT_DELAYED_WORK_DEFERRABLE(&idle2_unlock_cpufreq_work, idle2_unlock_cpufreq_work_fn);
 	idle2_flags |= WORK_INITIALISED;
 }
 
-void s5p_idle2_post_init(void)
+int s5p_idle2_post_init(void)
 {
+	int i = 0;
+	struct platform_device *pdev;
+	struct resource *res;
+
 	printk(KERN_INFO "cpuidle: IDLE2 support enabled - version 0.%d by <willtisdale@gmail.com>\n", IDLE2_VERSION);
 
 	register_pm_notifier(&idle2_pm_notifier);
-	s5p_init_remap();
-}
 
-#if defined(CONFIG_DEBUG_FS) && defined(CONFIG_PM_SLEEP)
-inline static int idle2_debug_show(struct seq_file *s, void *data)
-{
-	seq_printf(s, "\n");
-	seq_printf(s, "---------------IDLE2 v0.%d State Statistics--------------\n",
-		IDLE2_VERSION);
-	seq_printf(s, "\n");
-	seq_printf(s, "                               C2 (TOP ON)    C3 (TOP OFF)\n");
-	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "CPUidle requested state:      %12u    %12u\n", request_C2, request_C3);
-	seq_printf(s, "State entered:                %12u    %12u\n", enter_C2, enter_C3);
-	seq_printf(s, "State completed:              %12u    %12u\n", done_C2, done_C3);
-	seq_printf(s, "State not completed:          %12u    %12u\n", bail_C2, bail_C3);
-	seq_printf(s, "\n");
-	seq_printf(s, "Requested & completed:       %12u%%    %11u%%\n",
-		done_C2 * 100 / (request_C2 ?: 1),
-		done_C3 * 100 / (request_C3 ?: 1));
-	seq_printf(s, "Entered & completed:         %12u%%    %11u%%\n",
-		done_C2 * 100 / (enter_C2 ?: 1),
-		done_C3 * 100 / (enter_C3 ?: 1));
-	seq_printf(s, "Failed:                      %12u%%    %11u%%\n",
-		bail_C2 * 100 / (enter_C2 ?: 1),
-		bail_C3 * 100 / (enter_C3 ?: 1));
-	seq_printf(s, "\n");
-	seq_printf(s, "-----------------IDLE2 Failure Statistics-----------------\n");
-	seq_printf(s, "       RTC     MMC     VIC     I2S    NAND    Gate  C3Gate      DMA\n");
-	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "   %7u %7u %7u %7u %7u %7u %7u %7u\n",
-		bail_rtc, bail_mmc, bail_vic, bail_i2s, bail_nand, bail_gating, bail_C3_gating, bail_DMA);
-	seq_printf(s, "\n");
-	seq_printf(s, "---------------------C1 Fallback Usage--------------------\n");
-	seq_printf(s, "State Entered:                %12u\n", done_C1);
-	seq_printf(s, "\n");
-	seq_printf(s, "Fallback to C1 (Total):      %12u%%\n",
-		done_C1 * 100 / ((request_C2 ?: 1) + (request_C3 ?: 1)));
-	seq_printf(s, "\n");
-	seq_printf(s, "----------------IDLE2 Residency Statistics----------------\n");
-	seq_printf(s, "             C1 (Fallback)     C2 (TOP ON)    C3 (TOP OFF)\n");
-	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "Total (us):   %12llu    %12llu    %12llu\n",
-		report_state_time(0), report_state_time(1), report_state_time(2));
-	seq_printf(s, "Average (us): %12u    %12u    %12u\n",
-		report_average_residency(0), report_average_residency(1), report_average_residency(2));
-	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "\n");
+	/*
+	 * Allocate memory region to access HSMMC & OneNAND registers
+	 */
+	for (i = 0 ; i < MAX_CHK_DEV ; i++) {
 
+		pdev = chk_dev_op[i].pdev;
+
+		if (pdev == NULL)
+			break;
+
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+		if (!res) {
+			pr_err("%s: failed to get io memory region\n", __func__);
+			return -EINVAL;
+		}
+		if(pdev == &s5p_device_onenand)
+			chk_dev_op[i].base = ioremap(res->start+0x00600000, 4096);
+		else
+			chk_dev_op[i].base = ioremap(res->start, 4096);
+
+		if (!chk_dev_op[i].base) {
+			pr_err("%s: failed to remap io region\n", __func__);
+			return -EINVAL;
+		}
+	}
 	return 0;
 }
-
-static int idle2_debug_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, idle2_debug_show, inode->i_private);
-}
-
-static const struct file_operations idle2_debug_ops = {
-	.open		= idle2_debug_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static int __init idle2_debug_init(void)
-{
-	struct dentry *dir;
-	struct dentry *d;
-
-	dir = debugfs_create_dir("idle2", NULL);
-	if (!dir)
-		return -ENOMEM;
-
-	d = debugfs_create_file("error_stats", S_IRUGO, dir, NULL,
-		&idle2_debug_ops);
-	if (!d)
-		return -ENOMEM;
-
-	return 0;
-}
-
-late_initcall(idle2_debug_init);
-#endif

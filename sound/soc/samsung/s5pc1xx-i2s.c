@@ -761,7 +761,7 @@ static int s5p_i2s_wr_startup(struct snd_pcm_substream *substream,
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 #ifdef CONFIG_S5P_IDLE2
-		idle2_audio_active(true);
+//		idle2_audio_active(true);
 #endif
 		pr_debug("Inside..%s..for playback stream\n" , __func__);
 		tx_clk_enabled = 1;
@@ -800,7 +800,7 @@ static void s5p_i2s_wr_shutdown(struct snd_pcm_substream *substream,
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 #ifdef CONFIG_S5P_IDLE2
-		idle2_audio_active(false);
+//		idle2_audio_active(false);
 #endif
 		pr_debug("Inside %s for playback stream\n" , __func__);
 		tx_clk_enabled = 0;

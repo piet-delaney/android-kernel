@@ -57,12 +57,10 @@ obj-$(CONFIG_S5PV210_SETUP_FIMC0)	+= setup-fimc0.o
 obj-$(CONFIG_S5PV210_SETUP_FIMC1)	+= setup-fimc1.o
 obj-$(CONFIG_S5PV210_SETUP_FIMC2)	+= setup-fimc2.o
 
-ifdef CONFIG_S5P_IDLE2
-obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o idle2.o
-else
-obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o
-endif
+obj-$(CONFIG_S5P_IDLE2)		+= idle2.o
+obj-$(CONFIG_S5P_IDLE2_STATS)	+= idle2_stats.o
 ifdef CONFIG_S5P_IDLE2_DEBUG
-CFLAGS_cpuidle.o               := -DDEBUG
+CFLAGS_idle2.o               := -DDEBUG
 endif
+obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o
 obj-$(CONFIG_CPU_FREQ)		+= dev-cpufreq.o

@@ -573,11 +573,14 @@ static int s5pv210_cpufreq_notifier_event(struct notifier_block *this,
 		if (ret < 0)
 			return NOTIFY_BAD;
 		return NOTIFY_OK;
+/* Don't re-enable cpufreq if idle2 is built in */
+#ifndef CONFIG_S5P_IDLE2
 	case PM_POST_RESTORE:
 	case PM_POST_SUSPEND:
 		cpufreq_driver_target(cpufreq_cpu_get(0), SLEEP_FREQ,
 				ENABLE_FURTHER_CPUFREQ);
 		return NOTIFY_OK;
+#endif
 	}
 	return NOTIFY_DONE;
 }

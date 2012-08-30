@@ -117,6 +117,14 @@ config S5P_IDLE2
 	  power savings when audio is not playing and / or the display is
 	  turned on.
 
+config S5P_IDLE2_STATS
+	bool "Export IDLE2 statistics to debugfs"
+	depends on S5P_IDLE2 && DEBUG_FS
+
+	default n
+	help
+	  Export IDLE2 statistics to debugfs.
+	  /sys/kernel/debug/idle2/statistics
 
 config S5P_IDLE2_DEBUG
 	bool "IDLE2 debug messages (will impact performance)"
