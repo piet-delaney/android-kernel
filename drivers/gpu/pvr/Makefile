@@ -11,6 +11,7 @@ ccflags-y := \
 	-Wno-unused-parameter\
 	-Wno-sign-compare\
 	-Werror\
+	-Wno-error=maybe-uninitialized\
 	-fno-strict-aliasing\
 	-Wno-pointer-arith\
 	-Os
