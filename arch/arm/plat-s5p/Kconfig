@@ -103,6 +103,38 @@ config S5P_DEV_FB
 	help
 	  Compile in platform device definitions for FIMD controller
 
+config S5P_IDLE2
+	bool "Support S5P IDLE2 functionality"
+	depends on CPU_IDLE && PM && !S5PV210_CORESIGHT
+	select ARM_ERRATA_430973
+	select ARM_ERRATA_458693
+	select ARM_ERRATA_460075
+	default y
+	help
+	  IDLE2 enables additional power saving by implementing DEEP-IDLE.
+	  Power saving is achieved by power gating the Cortex-A8 applications
+	  processor and L2 cache whenever possible.
+	  Furthermore, when circumstances permit, such as when the display is
+	  turned off, the TOP & SUB blocks are also power gated, which makes
+	  this state almost as efficient as suspend.
+
+config S5P_IDLE2_STATS
+	bool "Export IDLE2 statistics to debugfs"
+	depends on S5P_IDLE2 && DEBUG_FS
+
+	default n
+	help
+	  Export IDLE2 statistics to debugfs.
+	  /sys/kernel/debug/idle2/statistics
+
+config S5P_IDLE2_DEBUG
+	bool "IDLE2 debug messages (will impact performance)"
+	depends on S5P_IDLE2
+	default n
+	help
+	  IDLE2 debug messages, this will impact performance so useful only for
+	  testing.
+
 config S5P_HIGH_RES_TIMERS
 	bool "HRtimer and Dynamic Tick support"
 	select GENERIC_CLOCKEVENTS
