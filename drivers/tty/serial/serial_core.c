@@ -36,6 +36,10 @@
 #include <asm/irq.h>
 #include <asm/uaccess.h>
 
+#ifdef CONFIG_S5P_IDLE2
+#include <mach/idle2.h>
+#endif /* CONFIG_S5P_IDLE2 */
+
 /*
  * This is used to lock changes in serial line configuration.
  */
@@ -1268,7 +1272,10 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	port = &state->port;
 
 	pr_debug("uart_close(%d) called\n", uport->line);
-
+#ifdef CONFIG_S5P_IDLE2
+	if (unlikely(uport->line == 1))
+		idle2_uart_timeout(HZ);
+#endif
 	mutex_lock(&port->mutex);
 	spin_lock_irqsave(&port->lock, flags);
 
@@ -1530,6 +1537,10 @@ static int uart_open(struct tty_struct *tty, struct file *filp)
 
 	BUG_ON(!tty_locked());
 	pr_debug("uart_open(%d) called\n", line);
+#ifdef CONFIG_S5P_IDLE2
+	if (unlikely(line == 1))
+		idle2_uart_active();
+#endif /* CONFIG_S5P_IDLE2 */
 
 	/*
 	 * We take the semaphore inside uart_get to guarantee that we won't

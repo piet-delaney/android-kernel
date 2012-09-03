@@ -37,6 +37,10 @@
 #include <plat/irqs.h>
 #include "herring.h"
 
+#ifdef CONFIG_S5P_IDLE2
+#include <mach/idle2.h>
+#endif /* CONFIG_S5P_IDLE2 */
+
 #define IRQ_BT_HOST_WAKE      IRQ_EINT(21)
 
 static struct wake_lock rfkill_wake_lock;
@@ -157,12 +161,20 @@ static int bluetooth_set_power(void *data, enum rfkill_user_states state)
 
 irqreturn_t bt_host_wake_irq_handler(int irq, void *dev_id)
 {
+
 	pr_debug("[BT] bt_host_wake_irq_handler start\n");
 
-	if (gpio_get_value(GPIO_BT_HOST_WAKE))
+	if (gpio_get_value(GPIO_BT_HOST_WAKE)) {
 		wake_lock(&rfkill_wake_lock);
-	else
+#ifdef CONFIG_S5P_IDLE2
+		idle2_bluetooth_active();
+#endif
+	} else {
 		wake_lock_timeout(&rfkill_wake_lock, HZ);
+#ifdef CONFIG_S5P_IDLE2
+		idle2_bluetooth_timeout(10 * HZ);
+#endif
+	}
 
 	return IRQ_HANDLED;
 }
