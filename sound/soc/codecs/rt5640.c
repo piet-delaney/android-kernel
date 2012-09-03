@@ -3388,7 +3388,7 @@ static int rt5640_remove(struct snd_soc_codec *codec)
 static int rt5640_suspend_i2c(struct i2c_client  *codec, pm_message_t state)
 {
 	int ret =0;
-	printk("rt5640_suspend_i2c+\n");
+	pr_debug("rt5640_suspend_i2c+\n");
 	snd_soc_update_bits(rt5640_audio_codec, RT5640_SPK_VOL,
 			RT5640_L_MUTE | RT5640_R_MUTE,
 			RT5640_L_MUTE | RT5640_R_MUTE);
@@ -3402,16 +3402,16 @@ static int rt5640_suspend_i2c(struct i2c_client  *codec, pm_message_t state)
 		pr_err("%s: gpio_request failed for gpio %s\n",__func__, "AUDIO_MCLK");
 	gpio_direction_output(TEGRA_GPIO_PW4, 0);
 	gpio_free(TEGRA_GPIO_PW4);
-	printk("rt5640_suspend_i2c-\n");
+	pr_debug("rt5640_suspend_i2c-\n");
 	return 0;
 }
 
 static int rt5640_resume_i2c(struct i2c_client  *codec)
 {
-	printk("rt5640_resume_i2c+\n");
+	pr_debug("rt5640_resume_i2c+\n");
 	tegra_gpio_disable(TEGRA_GPIO_PW4);
 	rt5640_set_bias_level(rt5640_audio_codec, SND_SOC_BIAS_STANDBY);
-	printk("rt5640_resume_i2c-\n");
+	pr_debug("rt5640_resume_i2c-\n");
 	return 0;
 }
 

@@ -851,7 +851,7 @@ static int tegra_sdhci_suspend(struct sdhci_host *sdhci, pm_message_t state)
 	}
 
 	if (!strcmp(mmc_hostname(sdhci->mmc), "mmc0")) {
-                MMC_printk("%s: pull up data pin", mmc_hostname(sdhci->mmc));
+                MMC_DBG("%s: pull up data pin", mmc_hostname(sdhci->mmc));
 
                 tegra_gpio_enable(TEGRA_GPIO_PAA0);
                 tegra_gpio_enable(TEGRA_GPIO_PAA1);
@@ -912,7 +912,7 @@ static int tegra_sdhci_resume(struct sdhci_host *sdhci)
 	}
 
 	if (!strcmp(mmc_hostname(sdhci->mmc), "mmc0")) {
-                MMC_printk("%s: disable data pin", mmc_hostname(sdhci->mmc));
+                MMC_DBG("%s: disable data pin", mmc_hostname(sdhci->mmc));
 
                 tegra_gpio_disable(TEGRA_GPIO_PAA0);
                 tegra_gpio_disable(TEGRA_GPIO_PAA1);

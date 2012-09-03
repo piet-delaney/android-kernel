@@ -110,7 +110,7 @@ static int mmc_decode_cid(struct mmc_card *card)
 		return -EINVAL;
 	}
 
-	MMC_printk("cid.prv 0x%x", card->cid.prv);
+	MMC_DBG("cid.prv 0x%x", card->cid.prv);
 
 	return 0;
 }
@@ -282,7 +282,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 			ext_csd[EXT_CSD_SEC_CNT + 1] << 8 |
 			ext_csd[EXT_CSD_SEC_CNT + 2] << 16 |
 			ext_csd[EXT_CSD_SEC_CNT + 3] << 24;
-		MMC_printk("ext_csd.sectors 0x%x prod_name %s BOOT_MULTI 0x%x", card->ext_csd.sectors, card->cid.prod_name, ext_csd[EXT_CSD_BOOT_MULT]);
+		MMC_DBG("ext_csd.sectors 0x%x prod_name %s BOOT_MULTI 0x%x", card->ext_csd.sectors, card->cid.prod_name, ext_csd[EXT_CSD_BOOT_MULT]);
 		card->ext_csd.sec_count = card->ext_csd.sectors;
 
 		/* Cards with density > 2GiB are sector addressed */

@@ -39,7 +39,7 @@ static int dsi_suspend(struct nvhost_device *dev, pm_message_t state)
 
 static int dsi_resume(struct nvhost_device *dev)
 {
-	dev_info(&dev->dev, "resuming\n");
+	dev_dbg(&dev->dev, "resuming\n");
 	return 0;
 }
 
