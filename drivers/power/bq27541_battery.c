@@ -417,9 +417,9 @@ int battery_callback(unsigned usb_cable_state)
 	old_cable_status = battery_cable_status;
 	battery_cable_status = usb_cable_state;
 
-       printk("========================================================\n");
-	printk("battery_callback  usb_cable_state = %x\n", usb_cable_state) ;
-       printk("========================================================\n");
+	pr_debug("========================================================\n");
+	pr_debug("battery_callback  usb_cable_state = %x\n", usb_cable_state) ;
+	pr_debug("========================================================\n");
 
 	check_cabe_type();
 

@@ -633,7 +633,7 @@ int nvhost_client_device_suspend(struct nvhost_device *dev)
 	if (ret)
 		return ret;
 
-	dev_info(&dev->dev, "suspend status: %d\n", ret);
+	dev_dbg(&dev->dev, "suspend status: %d\n", ret);
 
 	return ret;
 }

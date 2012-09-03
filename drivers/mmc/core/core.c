@@ -1900,11 +1900,11 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 
 	/* Order's important: probe SDIO, then SD, then MMC */
 	if (!mmc_attach_sdio(host)) {
-		MMC_printk("%s: sdio completed", mmc_hostname(host));
+		MMC_DBG("%s: sdio completed", mmc_hostname(host));
 		return 0;
 	}
 	if (!mmc_attach_mmc(host)) {
-		MMC_printk("%s: eMMC completed", mmc_hostname(host));
+		MMC_DBG("%s: eMMC completed", mmc_hostname(host));
 		return 0;
 	}
 
@@ -2228,7 +2228,7 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 	unsigned long flags;
 
 	printk("[mmc]mmc_pm_notify start\n");
-	MMC_printk("%s: mode %d, bus_resume_flags %d rescan_disable %d", mmc_hostname(host), mode, host->bus_resume_flags, host->rescan_disable); 
+	MMC_DBG("%s: mode %d, bus_resume_flags %d rescan_disable %d", mmc_hostname(host), mode, host->bus_resume_flags, host->rescan_disable); 
 
 	switch (mode) {
 	case PM_HIBERNATION_PREPARE:
@@ -2256,7 +2256,7 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 		mmc_power_off(host);
 		mmc_release_host(host);
 		host->pm_flags = 0;
-		MMC_printk("mode %d ended", mode);
+		MMC_DBG("mode %d ended", mode);
 		break;
 
 	case PM_POST_SUSPEND:
@@ -2274,7 +2274,7 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 
 	}
 
-	MMC_printk("%s finished", mmc_hostname(host));
+	MMC_DBG("%s finished", mmc_hostname(host));
 
 	return 0;
 }

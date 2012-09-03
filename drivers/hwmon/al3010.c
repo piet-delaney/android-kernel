@@ -432,32 +432,32 @@ static int al3010_chip_resume(struct al3010_data *data)
 static int al3010_early_suspend(struct early_suspend *h)
 {
 	if(al3010_hardware_fail==true){
-		printk("al3010_early_suspend\n");
+		pr_debug("al3010_early_suspend\n");
 		return 0;
 	}
-	printk("al3010_early_suspend+\n");
+	pr_debug("al3010_early_suspend+\n");
 	int ret = 0;
 	//+++
 	struct al3010_data *data = container_of(h, struct al3010_data, light_sensor_early_suspender);
 	ret = al3010_chip_suspend(data);
         //---
-	printk("al3010_early_suspend-\n");
+	pr_debug("al3010_early_suspend-\n");
 	return ret;
 }
 
 static int al3010_late_resume(struct early_suspend *h)
 {
 	if(al3010_hardware_fail==true){
-		printk("al3010_late_resume\n");
+		pr_debug("al3010_late_resume\n");
 		return 0;
 	}
-	printk("al3010_late_resume+\n");
+	pr_debug("al3010_late_resume+\n");
 	int ret=0;
 	//+++
 	struct al3010_data *data = container_of(h, struct al3010_data, light_sensor_early_suspender);
 	ret = al3010_chip_resume(data);
 	//---
-	printk("al3010_late_resume-\n");
+	pr_debug("al3010_late_resume-\n");
 	return ret;
 }
 #endif
@@ -661,32 +661,32 @@ static int __devexit al3010_remove(struct i2c_client *client)
 static int al3010_suspend(struct i2c_client *client, pm_message_t mesg)
 {
 	if(al3010_hardware_fail==true){
-		printk("al3010_suspend\n");
+		pr_debug("al3010_suspend\n");
 		return 0;
 	}
-	printk("al3010_suspend+\n");
+	pr_debug("al3010_suspend+\n");
 	int ret = 0;
 	//+++
 	struct al3010_data *data = i2c_get_clientdata(client);
 	ret = al3010_chip_suspend(data);
 	//---
-	printk("al3010_suspend-\n");
+	pr_debug("al3010_suspend-\n");
 	return ret;
 }
 
 static int al3010_resume(struct i2c_client *client)
 {
 	if(al3010_hardware_fail==true){
-		printk("al3010_resume\n");
+		pr_debug("al3010_resume\n");
 		return 0;
 	}
-	printk("al3010_resume+\n");
+	pr_debug("al3010_resume+\n");
 	int ret=0;
 	//+++
 	struct al3010_data *data = i2c_get_clientdata(client);
 	ret = al3010_chip_resume(data);
 	//---
-	printk("al3010_resume-\n");
+	pr_debug("al3010_resume-\n");
 	return ret;
 }
 
