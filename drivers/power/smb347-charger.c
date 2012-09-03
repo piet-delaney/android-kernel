@@ -888,9 +888,9 @@ static int smb347_suspend(struct i2c_client *client)
 {
 	charger->suspend_ongoing = 1;
 	//cancel_delayed_work_sync(&charger->regs_dump_work);
-	printk("smb347_suspend+\n");
+	pr_debug("smb347_suspend+\n");
 	flush_workqueue(smb347_wq);
-	printk("smb347_suspend-\n");
+	pr_debug("smb347_suspend-\n");
 	return 0;
 }
 
@@ -900,9 +900,9 @@ static int smb347_resume(struct i2c_client *client)
 	//cancel_delayed_work(&charger->regs_dump_work);
 	//queue_delayed_work(smb347_wq, &charger->regs_dump_work, 15*HZ);
 
-	printk("smb347_resume+\n");
+	pr_debug("smb347_resume+\n");
 	cable_type_detect();
-	printk("smb347_resume-\n");
+	pr_debug("smb347_resume-\n");
 	return 0;
 }
 
@@ -910,7 +910,7 @@ static int smb347_resume(struct i2c_client *client)
 static int smb347_shutdown(struct i2c_client *client)
 {
 	int ret;
-	printk("smb347_shutdown+\n");
+	pr_debug("smb347_shutdown+\n");
 
 	/* Disable OTG */
 	ret = smb347_configure_otg(client, 0);
