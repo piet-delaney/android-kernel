@@ -20,4 +20,4 @@ extern void idle2_uart_timeout(unsigned long delay);
 extern void idle2_audio_active(bool flag);
 extern void idle2_update_wakeup_stats(void);
 
-#define IDLE2_VERSION 	370
+#define IDLE2_VERSION 	380

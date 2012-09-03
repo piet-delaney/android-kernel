@@ -34,9 +34,6 @@
 #include <linux/wakelock.h>
 #include "s3c-dma.h"
 #include "s5pc1xx-i2s.h"
-#ifdef CONFIG_S5P_IDLE2
-#include <mach/idle2.h>
-#endif
 
 /*
  * The value should be set to maximum of the total number
@@ -736,7 +733,6 @@ static int s5p_i2s_wr_startup(struct snd_pcm_substream *substream,
 {
 	struct s3c_i2sv2_info *i2s = to_info(dai);
 	u32 iiscon, iisfic;
-
 	if (!tx_clk_enabled && !rx_clk_enabled) {
 		s5p_i2s_set_clk_enabled(dai, 1);
 		if (reg_saved_ok == true) {
@@ -760,9 +756,6 @@ static int s5p_i2s_wr_startup(struct snd_pcm_substream *substream,
 	}
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-#ifdef CONFIG_S5P_IDLE2
-//		idle2_audio_active(true);
-#endif
 		pr_debug("Inside..%s..for playback stream\n" , __func__);
 		tx_clk_enabled = 1;
 	} else {
@@ -797,11 +790,7 @@ static void s5p_i2s_wr_shutdown(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct s3c_i2sv2_info *i2s = to_info(dai);
-
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-#ifdef CONFIG_S5P_IDLE2
-//		idle2_audio_active(false);
-#endif
 		pr_debug("Inside %s for playback stream\n" , __func__);
 		tx_clk_enabled = 0;
 	} else {

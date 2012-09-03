@@ -108,7 +108,7 @@ static int s5p_init_cpuidle(void)
 #ifdef CONFIG_S5P_IDLE2
 		/* Deep-Idle top ON Wait for interrupt state */
 	device->states[1].enter = s5p_enter_idle_deep;
-	device->states[1].exit_latency = 1250;
+	device->states[1].exit_latency = 600;
 	device->states[1].target_residency = 6000;
 	device->states[1].flags = CPUIDLE_FLAG_TIME_VALID;
 	strcpy(device->states[1].name, "C2");
@@ -117,7 +117,7 @@ static int s5p_init_cpuidle(void)
 
 	/* Deep-Idle top OFF Wait for interrupt state */
 	device->states[2].enter = s5p_enter_idle_deep;
-	device->states[2].exit_latency = 2000;
+	device->states[2].exit_latency = 1000;
 	device->states[2].target_residency = 6000;
 	device->states[2].flags = CPUIDLE_FLAG_TIME_VALID;
 	strcpy(device->states[2].name, "C3");

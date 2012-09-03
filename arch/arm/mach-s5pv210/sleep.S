@@ -37,28 +37,6 @@
 	 * entry:
 	 *	r1 = v:p offset
 	*/
-ENTRY(s3c_idle2_cpu_save)
-
-	stmfd	sp!, { r3 - r12, lr }
-	ldr	r3, =resume_idle2_with_mmu
-	bl	cpu_suspend
-
-	ldr	r0, =pm_cpu_sleep
-	ldr	r0, [ r0 ]
-	mov	pc, r0
-
-resume_idle2_with_mmu:
-	mrc     p15, 0, r0, c1, c0, 1	@enable L2 cache
-	orr     r0, r0, #(1<<1)
-	mcr     p15, 0, r0, c1, c0, 1
-	mov	r0, #1
-
-	/* Invalidate TLB after mucking with MMU table. */
-	mov	r0, #0
-	mcr	p15, 0, r0, c8, c7, 0		@ Invalidate I & D TLB
-
-	ldmfd	sp!, { r3 - r12, pc }
-
 ENTRY(s3c_cpu_save)
 
 	stmfd	sp!, { r3 - r12, lr }

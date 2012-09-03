@@ -17,10 +17,8 @@
 #include <linux/io.h>
 
 
-extern u32 bail_C2, bail_C3;
-extern u32 request_C2, request_C3, enter_C2, enter_C3, done_C2, done_C3, done_C1;
+extern u32 done_C2, done_C3, fallthrough;
 u32 s5p_wakeup_reason[6];
-extern u32 bail_vic, bail_mmc, bail_gating, bail_i2s, bail_rtc, bail_nand, bail_C3_gating, bail_DMA;
 extern u8 idle_state;
 extern u64 time_in_state[3];
 
@@ -58,11 +56,6 @@ unsigned int report_average_residency(unsigned char idle_state)
 		return 0;
 
 	switch (idle_state) {
-	case 0:
-		if (likely(done_C1 > 0)) {
-			do_div(time, done_C1);
-			break;
-	}
 	case 1:
 		if (likely(done_C2 > 0)) {
 			do_div(time, done_C2);
@@ -84,49 +77,22 @@ static int idle2_debug_show(struct seq_file *s, void *data)
 	seq_printf(s, "\n");
 	seq_printf(s, "---------------IDLE2 v0.%d State Statistics--------------\n",
 		IDLE2_VERSION);
-	seq_printf(s, "\n");
-	seq_printf(s, "                               C2 (TOP ON)    C3 (TOP OFF)\n");
-	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "CPUidle requested state:      %12u    %12u\n", request_C2, request_C3);
-	seq_printf(s, "State entered:                %12u    %12u\n", enter_C2, enter_C3);
-	seq_printf(s, "State completed:              %12u    %12u\n", done_C2, done_C3);
-	seq_printf(s, "State not completed:          %12u    %12u\n", bail_C2, bail_C3);
-	seq_printf(s, "\n");
-	seq_printf(s, "Requested & completed:       %12u%%    %11u%%\n",
-		done_C2 * 100 / (request_C2 ?: 1),
-		done_C3 * 100 / (request_C3 ?: 1));
-	seq_printf(s, "Entered & completed:         %12u%%    %11u%%\n",
-		done_C2 * 100 / (enter_C2 ?: 1),
-		done_C3 * 100 / (enter_C3 ?: 1));
-	seq_printf(s, "Failed:                      %12u%%    %11u%%\n",
-		bail_C2 * 100 / (enter_C2 ?: 1),
-		bail_C3 * 100 / (enter_C3 ?: 1));
-	seq_printf(s, "\n");
-	seq_printf(s, "-----------------IDLE2 Failure Statistics-----------------\n");
-	seq_printf(s, "      RTC    MMC    VIC    I2S   NAND   Gate C3Gate    DMA\n");
-	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "   %6u %6u %6u %6u %6u %6u %6u %6u\n",
-		bail_rtc, bail_mmc, bail_vic, bail_i2s, bail_nand, bail_gating, bail_C3_gating, bail_DMA);
-	seq_printf(s, "\n");
-	seq_printf(s, "---------------------C1 Fallback Usage--------------------\n");
-	seq_printf(s, "State Entered:                %12u\n", done_C1);
-	seq_printf(s, "\n");
-	seq_printf(s, "Fallback to C1 (Total):      %12u%%\n",
-		(done_C1 * 100) / ((request_C2 ?: 1) + request_C3));
+	seq_printf(s, "--------------------Failure Statistics--------------------\n");
+	seq_printf(s, "Times C2/C3 failed:           %12u\n", fallthrough);
 	seq_printf(s, "\n");
 	seq_printf(s, "----------------IDLE2 Residency Statistics----------------\n");
-	seq_printf(s, "             C1 (Fallback)     C2 (TOP ON)    C3 (TOP OFF)\n");
+	seq_printf(s, "                               C2 (TOP ON)    C3 (TOP OFF)\n");
 	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "Total (us):   %12llu    %12llu    %12llu\n",
-		report_state_time(0), report_state_time(1), report_state_time(2));
-	seq_printf(s, "Average (us): %12u    %12u    %12u\n",
-		report_average_residency(0), report_average_residency(1), report_average_residency(2));
+	seq_printf(s, "Total (us):                   %12llu    %12llu\n",
+		report_state_time(1), report_state_time(2));
+	seq_printf(s, "Average (us):                 %12u    %12u\n",
+		report_average_residency(1), report_average_residency(2));
 	seq_printf(s, "----------------------------------------------------------\n");
 	seq_printf(s, "\n");
-	seq_printf(s, "-----------------IDLE2 Wakeup Statistics------------------\n");
-	seq_printf(s, "                   EINT  ALARM   TICK    KEY    I2S     ST\n");
+	seq_printf(s, "--------------------Wakeup Statistics---------------------\n");
+	seq_printf(s, "              EINT   ALARM    TICK     KEY     I2S      ST\n");
 	seq_printf(s, "----------------------------------------------------------\n");
-	seq_printf(s, "                 %6u %6u %6u %6u %6u %6u\n", 
+	seq_printf(s, "           %7u %7u %7u %7u %7u %7u\n",
 		s5p_wakeup_reason[0], s5p_wakeup_reason[1], s5p_wakeup_reason[2],
 		s5p_wakeup_reason[3], s5p_wakeup_reason[4], s5p_wakeup_reason[5]);
 	seq_printf(s, "----------------------------------------------------------\n");
