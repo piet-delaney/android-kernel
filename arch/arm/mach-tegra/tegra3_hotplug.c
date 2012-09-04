@@ -22,7 +22,7 @@
 #include <linux/cpu.h>
 #include <linux/workqueue.h>
 #include <linux/sched.h>
-#include <linux/spinlock.h>
+#include <linux/mutex.h>
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
@@ -38,15 +38,13 @@
  */
 #define DEBUG 0
 
-#define CPUS_AVAILABLE 		num_possible_cpus()
-#define MIN_ONLINE_CPUS 	2
-#define SAMPLING_PERIODS 	10
+#define CPUS_AVAILABLE		num_possible_cpus()
+#define MIN_ONLINE_CPUS		1 /* Number of online CPUs whilst screen on */
+#define SAMPLING_PERIODS	20 /* Load average for 200ms at MIN_SAMPLING_RATE */
+#define MIN_SAMPLING_RATE	msecs_to_jiffies(10)
 #define INDEX_MAX_VALUE		(SAMPLING_PERIODS - 1)
-#define MIN_SAMPLING_RATE 	msecs_to_jiffies(10) /* 10 ms min sampling rate */
-#define ENABLE_LOAD_THRESHOLD 	(150 * CPUS_AVAILABLE) /* When load spikes high, enable all CPUs */
-#define DISABLE_LOAD_THRESHOLD 	60 /* When CPU load is 0.6 disable additional CPUs */
-#define ONE_SECOND 		msecs_to_jiffies(1000) /* 1 second */
-#define ONE_HUNDRED_MS		msecs_to_jiffies(100) /* 100 milliseconds */
+#define ENABLE_LOAD_THRESHOLD	(175 * CPUS_AVAILABLE) /* When load spikes high, enable all CPUs */
+#define DISABLE_LOAD_THRESHOLD	60 /* When CPU load is 0.6 disable additional CPUs */
 
 struct delayed_work tegra3_hotplug_work;
 struct delayed_work hotplug_online_work;
@@ -55,21 +53,22 @@ struct delayed_work hotplug_offline_work;
 struct delayed_work hotplug_offline_all_work;
 struct workqueue_struct *tegra3_hotplug_wq;
 
-static unsigned char min_online_cpus __read_mostly = MIN_ONLINE_CPUS;
-static unsigned int history[SAMPLING_PERIODS];
-static unsigned char index;
-static unsigned int avg_running;
-static DEFINE_SPINLOCK(hotplug_lock);
+static u8 min_online_cpus __read_mostly = MIN_ONLINE_CPUS;
+static u16 history[SAMPLING_PERIODS];
+static u8 index;
+static u16 avg_running;
+static DEFINE_MUTEX(hotplug_lock);
+
 
 static void tegra3_hotplug(struct work_struct *work)
 {
-	unsigned int running, disable_load, sampling_rate, enable_load;
-	unsigned char online_cpus, i, j;
+	u16 running, disable_load, sampling_rate, enable_load;
+	u8 online_cpus, i, j;
 #if DEBUG
-	unsigned char k;
+	u8 k;
 #endif
 
-	spin_lock(&hotplug_lock);
+	mutex_lock(&hotplug_lock);
 
 	online_cpus = num_online_cpus();
 
@@ -125,7 +124,7 @@ static void tegra3_hotplug(struct work_struct *work)
 #if DEBUG
 	pr_info("average_running is: %d\n", avg_running);
 #endif
-	spin_unlock(&hotplug_lock);
+	mutex_unlock(&hotplug_lock);
 
 	if(unlikely(((avg_running >= ENABLE_LOAD_THRESHOLD) && (online_cpus < CPUS_AVAILABLE))
 			|| (online_cpus < min_online_cpus))) {
@@ -142,7 +141,7 @@ static void tegra3_hotplug(struct work_struct *work)
 	}
 	if(unlikely((avg_running < disable_load) && (online_cpus > min_online_cpus))) {
 		pr_info("tegra3_hotplug: Offlining CPU, avg running: %d\n", avg_running);
-		queue_delayed_work(tegra3_hotplug_wq, &hotplug_offline_work, ONE_SECOND * 2);
+		queue_delayed_work(tegra3_hotplug_wq, &hotplug_offline_work, HZ * 2);
 		return;
 	}
 
@@ -159,6 +158,7 @@ static void tegra3_hotplug(struct work_struct *work)
 
 static int min_online_state_set(const char *val, const struct kernel_param *kp)
 {
+	mutex_lock(&hotplug_lock);
 	param_set_uint(val, kp);
 	pr_info("tegra3_hotplug min_online_cpus: %d\n", min_online_cpus);
 	/*
@@ -169,6 +169,7 @@ static int min_online_state_set(const char *val, const struct kernel_param *kp)
 		min_online_cpus = CPUS_AVAILABLE;
 	else if (unlikely(min_online_cpus < 1))
 		min_online_cpus = 1;
+	mutex_unlock(&hotplug_lock);
 	return 0;
 }
 
@@ -185,7 +186,7 @@ module_param_cb(min_online_cpus, &tegra_min_online_ops, &min_online_cpus, 0644);
 
 static void hotplug_online_all(struct work_struct *work)
 {
-	unsigned char cpu;
+	int cpu;
 	for_each_possible_cpu(cpu) {
 		if (likely(!cpu_online(cpu))) {
 			cpu_up(cpu);
@@ -195,12 +196,12 @@ static void hotplug_online_all(struct work_struct *work)
 	/*
 	 * Pause for 2 seconds before even considering offlining a CPU
 	 */
-	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, ONE_SECOND * 2);
+	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, HZ * 2);
 }
 
 static void hotplug_offline_all(struct work_struct *work)
 {
-	unsigned char cpu;
+	int cpu;
 	for_each_possible_cpu(cpu) {
 		if (likely(cpu_online(cpu) && (cpu != 0))) {
 			cpu_down(cpu);
@@ -219,10 +220,10 @@ static void hotplug_offline(struct work_struct *work)
 	 * then continue and hope that whatever is fiddling stops.
 	 * WARNING: Fiddling will result in lots of messages in dmesg. :)
 	 */
-	unsigned char cpu;
-	unsigned char cpus_online = num_online_cpus();
+	u8 cpu;
+	u8 cpus_online = num_online_cpus();
 	if (unlikely(cpus_online == 1)) {
-		queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, ONE_HUNDRED_MS);
+		queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, HZ / 10);
 		WARN(1, KERN_WARNING
 			"tegra3_hotplug: %s called but no secondary cores online?\n", __func__);
 		return;
@@ -230,7 +231,7 @@ static void hotplug_offline(struct work_struct *work)
 	cpu = (cpus_online - 1);
 	if (likely(cpu_online(cpu))) {
 		if (unlikely(cpu == 0)) {
-			queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, ONE_HUNDRED_MS);
+			queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, HZ / 10);
 			return;
 		}
 		cpu_down(cpu);
@@ -245,7 +246,7 @@ static void hotplug_offline(struct work_struct *work)
 		queue_delayed_work(tegra3_hotplug_wq, &hotplug_online_all_work, 0);
 		return;
 	}
-	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, ONE_HUNDRED_MS);
+	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, HZ / 10);
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -266,8 +267,7 @@ static void tegra3_hotplug_late_resume(struct early_suspend *handler)
 {
 	pr_info("tegra3_hotplug: late resume handler\n");
 
-	queue_delayed_work(tegra3_hotplug_wq, &hotplug_online_all_work, 0);
-	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, ONE_SECOND);
+	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, HZ);
 }
 
 static struct early_suspend tegra3_hotplug_suspend = {
@@ -278,7 +278,7 @@ static struct early_suspend tegra3_hotplug_suspend = {
 
 static int __init tegra3_hotplug_init(void)
 {
-	pr_info("tegra3_hotplug: v0.100 by _thalamus init()\n");
+	pr_info("tegra3_hotplug: v0.101 by _thalamus init()\n");
 	pr_info("tegra3_hotplug: %d CPUs detected\n", CPUS_AVAILABLE);
 	tegra3_hotplug_wq = create_singlethread_workqueue("tegra3_hotplug");
 	BUG_ON(!tegra3_hotplug_wq);
@@ -289,7 +289,7 @@ static int __init tegra3_hotplug_init(void)
 	/*
 	 * Give the system time to boot before fiddling with hotplugging.
 	 */
-	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, ONE_SECOND * 30);
+	queue_delayed_work(tegra3_hotplug_wq, &tegra3_hotplug_work, HZ * 30);
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	register_early_suspend(&tegra3_hotplug_suspend);
 #endif
