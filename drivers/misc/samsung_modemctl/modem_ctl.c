@@ -38,6 +38,10 @@
 /* supports modem delta update */
 #include "modem_ctl_recovery.h"
 
+#ifdef CONFIG_S5P_IDLE2
+#include <mach/idle2.h>
+#endif /* CONFIG_S5P_IDLE2 */
+
 /* Defines the primitives for writing and reading from and to the oneDRAM.
  *  All these primitives are used by the functions of file operation.
  */
@@ -824,6 +828,20 @@ static long modemctl_ioctl(struct file *filp,
 	struct dpram_firmware fw;
 	struct stat_info *pst;
 	int ret = 0;
+
+#ifdef CONFIG_S5P_IDLE2
+	/*
+	 * The modem borks if it crashes whilst idle2 is
+	 * enabled. This appears to be caused by the modem not
+	 * being able to interrupt the A8 after it has crashed.
+	 *
+	 * To workaround this issue, kill idle2 for 10 seconds
+	 * each time modemctl_ioctl() is called.
+	 * Unfortunately this adds another ugly hack into a
+	 * driver with it's fair share of them already. :(
+	 */
+	idle2_kill(1, HZ * 10);
+#endif
 
 	mutex_lock(&mc->ctl_lock);
 	switch (cmd) {

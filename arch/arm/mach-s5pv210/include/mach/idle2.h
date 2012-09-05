@@ -19,5 +19,6 @@ extern void idle2_uart_active(void);
 extern void idle2_uart_timeout(unsigned long delay);
 extern void idle2_audio_active(bool flag);
 extern void idle2_update_wakeup_stats(void);
+extern void idle2_kill(bool kill, u16 timeout);
 
-#define IDLE2_VERSION 	382
+#define IDLE2_VERSION 	383
