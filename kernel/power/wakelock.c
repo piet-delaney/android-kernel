@@ -30,8 +30,9 @@ enum {
 	DEBUG_SUSPEND = 1U << 2,
 	DEBUG_EXPIRE = 1U << 3,
 	DEBUG_WAKE_LOCK = 1U << 4,
+	DEBUG_ENTER_SUSPEND = 1U << 5,
 };
-static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP;
+static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_ENTER_SUSPEND | DEBUG_WAKEUP;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define WAKE_LOCK_TYPE_MASK              (0x0f)
@@ -282,9 +283,16 @@ static void suspend(struct work_struct *work)
 
 	entry_event_num = current_event_num;
 	sys_sync();
-	if (debug_mask & DEBUG_SUSPEND)
-		pr_info("suspend: enter suspend\n");
 	getnstimeofday(&ts_entry);
+	if (debug_mask & DEBUG_ENTER_SUSPEND) {
+		struct rtc_time tm;
+		rtc_time_to_tm(ts_entry.tv_sec, &tm);
+		pr_info("suspend: enter suspend "
+			"(%d-%02d-%02d %02d:%02d:%02d.%09lu UTC)\n",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec, ts_entry.tv_nsec);
+	}
+
 	ret = pm_suspend(requested_suspend_state);
 	getnstimeofday(&ts_exit);
 
@@ -307,6 +315,9 @@ static void suspend(struct work_struct *work)
 	} else {
 		suspend_short_count = 0;
 	}
+
+	if (!(ts_exit.tv_sec - ts_entry.tv_sec <= 1))
+		pr_info("Suspended for %d seconds\n", (int)(ts_exit.tv_sec - ts_entry.tv_sec));
 
 	if (current_event_num == entry_event_num) {
 		if (debug_mask & DEBUG_SUSPEND)
