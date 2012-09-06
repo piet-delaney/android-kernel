@@ -1274,7 +1274,7 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 	pr_debug("uart_close(%d) called\n", uport->line);
 #ifdef CONFIG_S5P_IDLE2
 	if (unlikely(uport->line == 1))
-		idle2_uart_timeout(HZ);
+		idle2_uart_active(false);
 #endif
 	mutex_lock(&port->mutex);
 	spin_lock_irqsave(&port->lock, flags);
@@ -1539,7 +1539,7 @@ static int uart_open(struct tty_struct *tty, struct file *filp)
 	pr_debug("uart_open(%d) called\n", line);
 #ifdef CONFIG_S5P_IDLE2
 	if (unlikely(line == 1))
-		idle2_uart_active();
+		idle2_uart_active(true);
 #endif /* CONFIG_S5P_IDLE2 */
 
 	/*

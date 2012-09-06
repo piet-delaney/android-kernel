@@ -163,17 +163,13 @@ irqreturn_t bt_host_wake_irq_handler(int irq, void *dev_id)
 {
 
 	pr_debug("[BT] bt_host_wake_irq_handler start\n");
-
+#ifdef CONFIG_S5P_IDLE2
+	idle2_bluetooth_irq_active(1, 10 * HZ);
+#endif
 	if (gpio_get_value(GPIO_BT_HOST_WAKE)) {
 		wake_lock(&rfkill_wake_lock);
-#ifdef CONFIG_S5P_IDLE2
-		idle2_bluetooth_active();
-#endif
 	} else {
 		wake_lock_timeout(&rfkill_wake_lock, HZ);
-#ifdef CONFIG_S5P_IDLE2
-		idle2_bluetooth_timeout(10 * HZ);
-#endif
 	}
 
 	return IRQ_HANDLED;

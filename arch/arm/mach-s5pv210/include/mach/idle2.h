@@ -13,12 +13,9 @@
 extern void idle2_external_active(void);
 extern void idle2_external_inactive(unsigned long delay);
 extern void earlysuspend_active_fn(bool flag);
-extern void idle2_bluetooth_active(void);
-extern void idle2_bluetooth_timeout(unsigned long delay);
-extern void idle2_uart_active(void);
-extern void idle2_uart_timeout(unsigned long delay);
-extern void idle2_audio_active(bool flag);
+extern void idle2_uart_active(bool flag);
 extern void idle2_update_wakeup_stats(void);
 extern void idle2_kill(bool kill, u16 timeout);
+extern void idle2_bluetooth_irq_active(bool kill, u16 timeout);
 
-#define IDLE2_VERSION 	383
+#define IDLE2_VERSION 	390
