@@ -782,7 +782,9 @@ static ssize_t store_boost(struct kobject *kobj, struct attribute *attr,
 }
 
 define_one_global_rw(boost);
-
+#ifdef CONFIG_ARM_AUTO_HOTPLUG
+extern void hotplug_boostpulse(bool flag, bool oneshot);
+#endif
 static ssize_t store_boostpulse(struct kobject *kobj, struct attribute *attr,
 				const char *buf, size_t count)
 {
@@ -795,6 +797,10 @@ static ssize_t store_boostpulse(struct kobject *kobj, struct attribute *attr,
 
 	trace_cpufreq_interactive_boost("pulse");
 	cpufreq_interactive_boost();
+#ifdef CONFIG_ARM_AUTO_HOTPLUG
+	/* Call hotplug_boostpulse in oneshot mode */
+	hotplug_boostpulse(true, true);
+#endif
 	return count;
 }
 
