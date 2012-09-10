@@ -19,6 +19,8 @@
 #include <linux/cpuidle.h>
 #include <linux/suspend.h>
 #include <linux/workqueue.h>
+#include <linux/cpu_pm.h>
+#include <linux/clockchips.h>
 
 #include <mach/regs-irq.h>
 #include <mach/regs-clock.h>
@@ -204,16 +206,29 @@ inline static int s5p_enter_idle2(void)
 	}
 
 	/*
-	 * Store the resume address in the INFORM0 register
-	 */
-	__raw_writel(virt_to_phys(s3c_cpu_resume), S5P_INFORM0);
-
-	/*
 	 * Check VIC Status again before entering IDLE2 mode.
 	 * Return EBUSY if there is an interrupt pending
 	 */
 	if (unlikely(__raw_readl(VA_VIC2 + VIC_RAW_STATUS) & vic_regs[2]))
 		return -EBUSY;
+
+	/*
+	 * Store the resume address in the INFORM0 register
+	 */
+	__raw_writel(virt_to_phys(s3c_cpu_resume), S5P_INFORM0);
+
+	/*
+	 * Notify timer infrastructure that we are entering a
+	 * low power state.
+	 */
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, 0);
+
+	/*
+	 * Notify CPU PM notifier that we are entering a low
+	 * power state.
+	 * This currently saves the VFP state.
+	 */
+	cpu_pm_enter();
 
 	/* GPIO Power Down Control */
 	if (likely(!(idle2_flags & TOP_BLOCK_ON))) {
@@ -349,6 +364,12 @@ inline static int s5p_enter_idle2(void)
 	 */
 	tmp &= ~0xffffffff;
 	__raw_writel(tmp, S5P_EINT_WAKEUP_MASK);
+
+	/*
+	 * Notify that we have left the low power state
+	 */
+	cpu_pm_exit();
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, 0);
 
 	return 0;
 }

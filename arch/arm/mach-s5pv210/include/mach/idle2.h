@@ -18,4 +18,4 @@ extern void idle2_update_wakeup_stats(void);
 extern void idle2_kill(bool kill, u16 timeout);
 extern void idle2_bluetooth_irq_active(bool kill, u16 timeout);
 
-#define IDLE2_VERSION 	390
+#define IDLE2_VERSION 	391
