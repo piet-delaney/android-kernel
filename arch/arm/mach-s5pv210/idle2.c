@@ -26,11 +26,15 @@
 #include <mach/regs-clock.h>
 #include <mach/regs-gpio.h>
 #include <mach/idle2.h>
+#include <mach/power-domain.h>
 
 #include <plat/pm.h>
 #include <plat/devs.h>
+#include <plat/irq-eint-group.h>
+#include <plat/regs-timer.h>
 
 #include <asm/cacheflush.h>
+#include <asm/fiq_glue.h>
 
 /*
  * WARNING: Do not change IDLE2_FREQ because it it also SLEEP_FREQ as we no
@@ -77,6 +81,75 @@ static bool idle2_disabled __read_mostly;
 /*
  * For saving & restoring state
  */
+
+static struct sleep_save core_save[] = {
+	/* PLL Control */
+	SAVE_ITEM(S5P_APLL_CON),
+	SAVE_ITEM(S5P_MPLL_CON),
+	SAVE_ITEM(S5P_EPLL_CON),
+	SAVE_ITEM(S5P_VPLL_CON),
+
+	/* Clock source */
+	SAVE_ITEM(S5P_CLK_SRC0),
+	SAVE_ITEM(S5P_CLK_SRC1),
+	SAVE_ITEM(S5P_CLK_SRC2),
+	SAVE_ITEM(S5P_CLK_SRC3),
+	SAVE_ITEM(S5P_CLK_SRC4),
+	SAVE_ITEM(S5P_CLK_SRC5),
+	SAVE_ITEM(S5P_CLK_SRC6),
+
+	/* Clock source Mask */
+	SAVE_ITEM(S5P_CLK_SRC_MASK0),
+	SAVE_ITEM(S5P_CLK_SRC_MASK1),
+
+	/* Clock Divider */
+	SAVE_ITEM(S5P_CLK_DIV0),
+	SAVE_ITEM(S5P_CLK_DIV1),
+	SAVE_ITEM(S5P_CLK_DIV2),
+	SAVE_ITEM(S5P_CLK_DIV3),
+	SAVE_ITEM(S5P_CLK_DIV4),
+	SAVE_ITEM(S5P_CLK_DIV5),
+	SAVE_ITEM(S5P_CLK_DIV6),
+	SAVE_ITEM(S5P_CLK_DIV7),
+
+	/* Clock Main Gate */
+	SAVE_ITEM(S5P_CLKGATE_MAIN0),
+	SAVE_ITEM(S5P_CLKGATE_MAIN1),
+	SAVE_ITEM(S5P_CLKGATE_MAIN2),
+
+	/* Clock source Peri Gate */
+	SAVE_ITEM(S5P_CLKGATE_PERI0),
+	SAVE_ITEM(S5P_CLKGATE_PERI1),
+
+	/* Clock source SCLK Gate */
+	SAVE_ITEM(S5P_CLKGATE_SCLK0),
+	SAVE_ITEM(S5P_CLKGATE_SCLK1),
+
+	/* Clock IP Clock gate */
+	SAVE_ITEM(S5P_CLKGATE_IP0),
+	SAVE_ITEM(S5P_CLKGATE_IP1),
+	SAVE_ITEM(S5P_CLKGATE_IP2),
+	SAVE_ITEM(S5P_CLKGATE_IP3),
+	SAVE_ITEM(S5P_CLKGATE_IP4),
+
+	/* Clock Blcok and Bus gate */
+	SAVE_ITEM(S5P_CLKGATE_BLOCK),
+	SAVE_ITEM(S5P_CLKGATE_IP5),
+
+	/* Clock ETC */
+	SAVE_ITEM(S5P_CLK_OUT),
+	SAVE_ITEM(S5P_MDNIE_SEL),
+
+	/* PWM Register */
+	SAVE_ITEM(S3C2410_TCFG0),
+	SAVE_ITEM(S3C2410_TCFG1),
+	SAVE_ITEM(S3C64XX_TINT_CSTAT),
+	SAVE_ITEM(S3C2410_TCON),
+	SAVE_ITEM(S3C2410_TCNTB(0)),
+	SAVE_ITEM(S3C2410_TCMPB(0)),
+	SAVE_ITEM(S3C2410_TCNTO(0)),
+};
+
 static unsigned long vic_regs[4];
 
 #define GPIO_OFFSET		0x20
@@ -195,7 +268,6 @@ inline static bool check_C3_clock_gating(void)
 /*
  * Function which actually enters into DEEP-IDLE states
  */
-extern void s5p_enter_idle(void);
 inline static int s5p_enter_idle2(void)
 {
 	unsigned long tmp;
@@ -287,15 +359,9 @@ inline static int s5p_enter_idle2(void)
 
 	/*
 	 * External Interrupt wakeup sources:
-	 * Enable all sources, then mask sources
-	 * which cause spurious wakeups.
-	 *
-	 * EINT 1,2 & 30 are permanently pending
-	 * causing continual wakeups.
+	 * Enable same wakeup mask as SLEEP
 	 */
-	tmp &= ~0xffffffff;
-	tmp |= ((1 << 1) | (1 << 2) | (1 << 30));
-	__raw_writel(tmp, S5P_EINT_WAKEUP_MASK);
+	__raw_writel(s3c_irqwake_eintmask, S5P_EINT_WAKEUP_MASK);
 
 	/*
 	 * Set PWR_CFG register to enter IDLE mode
@@ -320,50 +386,65 @@ inline static int s5p_enter_idle2(void)
 	__raw_writel(__raw_readl(S5P_WAKEUP_STAT), S5P_WAKEUP_STAT);
 
 	/*
+	 * Save core register states as these are lost
+	 * when the A8 is power gated
+	 */
+	s3c_pm_do_save(core_save, ARRAY_SIZE(core_save));
+
+	/*
 	 * Entering idle2 state using platform PM code.
 	 */
 
 	/*
 	 * Save CPU state and enter idle2 state
 	 */
+	flush_cache_all();
 	s3c_cpu_save(0, PLAT_PHYS_OFFSET - PAGE_OFFSET);
 
 	/*
 	 * We have resumed from IDLE and returned.
-	 * Use platform CPU init code to continue and
-	 * flush caches to be sure.
 	 */
 	cpu_init();
-	flush_cache_all();
+	fiq_glue_resume();
+	s5pv210_restore_eint_group();
 
-	if (likely(!(idle2_flags & TOP_BLOCK_ON))) {
-		/*
-		 * Release retention of GPIO/MMC/UART IO pads
-		 */
+	/*
+	 * Release retention states
+	 */
+	if (!(idle2_flags & TOP_BLOCK_ON)) {
 		tmp = __raw_readl(S5P_OTHERS);
-		tmp |= (S5P_OTHERS_RET_IO | S5P_OTHERS_RET_CF
-			| S5P_OTHERS_RET_MMC | S5P_OTHERS_RET_UART);
+		tmp |= (S5P_OTHERS_RET_IO | S5P_OTHERS_RET_CF |
+			S5P_OTHERS_RET_MMC | S5P_OTHERS_RET_UART);
 		__raw_writel(tmp, S5P_OTHERS);
 	}
 
 	/*
-	 * Reset IDLE_CFG & PWR_CFG register
+	 * Restore core registers
 	 */
-	tmp = __raw_readl(S5P_IDLE_CFG);
-	tmp &= ~(S5P_IDLE_CFG_TL_MASK | S5P_IDLE_CFG_TM_MASK
-		| S5P_IDLE_CFG_L2_MASK | S5P_IDLE_CFG_DIDLE);
-	tmp |= (S5P_IDLE_CFG_TL_ON | S5P_IDLE_CFG_TM_ON);
-	__raw_writel(tmp, S5P_IDLE_CFG);
-
-	tmp = __raw_readl(S5P_PWR_CFG);
-	tmp &= S5P_CFG_WFI_CLEAN;
-	__raw_writel(tmp, S5P_PWR_CFG);
+	s3c_pm_do_restore_core(core_save, ARRAY_SIZE(core_save));
 
 	/*
 	 * Reset EINT wakeup mask for NORMAL mode
 	 */
+	tmp = __raw_readl(S5P_EINT_WAKEUP_MASK);
 	tmp &= ~0xffffffff;
 	__raw_writel(tmp, S5P_EINT_WAKEUP_MASK);
+
+	/*
+	 * Clean IDLE_CFG register
+	 */
+	tmp = __raw_readl(S5P_IDLE_CFG);
+	tmp &= ~(S5P_IDLE_CFG_TL_MASK | S5P_IDLE_CFG_TM_MASK
+		| S5P_IDLE_CFG_L2_MASK | S5P_IDLE_CFG_DIDLE);
+	tmp |= S5P_IDLE_CFG_TL_ON | S5P_IDLE_CFG_TM_ON;
+	__raw_writel(tmp, S5P_IDLE_CFG);
+
+	/*
+	 * Clean PWR_CFG register
+	 */
+	tmp = __raw_readl(S5P_PWR_CFG);
+	tmp &= S5P_CFG_WFI_CLEAN;
+	__raw_writel(tmp, S5P_PWR_CFG);
 
 	/*
 	 * Notify that we have left the low power state
