@@ -41,7 +41,7 @@
 
 u64 freq_boosted_time;
 #ifdef CONFIG_ARM_AUTO_HOTPLUG
-extern void hotplug_boostpulse(bool flag, bool oneshot);
+extern void hotplug_boostpulse(void);
 #endif
 
 /*
@@ -292,7 +292,7 @@ static ssize_t store_boostpulse(struct kobject *kobj, struct attribute *attr,
 
 	dbs_tuners_ins.boosted = 1;
 #ifdef CONFIG_ARM_AUTO_HOTPLUG
-	hotplug_boostpulse(true, false);
+	hotplug_boostpulse();
 #endif
 	freq_boosted_time = ktime_to_us(ktime_get());
 	return count;
@@ -449,9 +449,6 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	if (dbs_tuners_ins.boosted && policy->cpu == 0) {
 		if (ktime_to_us(ktime_get()) - freq_boosted_time >=
 					dbs_tuners_ins.freq_boost_time) {
-#ifdef CONFIG_ARM_AUTO_HOTPLUG
-			hotplug_boostpulse(false, false);
-#endif
 			dbs_tuners_ins.boosted = 0;
 		}
 	}
